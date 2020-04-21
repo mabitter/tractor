@@ -16,6 +16,7 @@ logger = logging.getLogger("fe")
 logger.setLevel(logging.INFO)
 
 
+
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
@@ -106,7 +107,9 @@ def rtkrcv_telnet_loop(rtkrover_host):
                 RtkRoverSocketHandler.new_message(str(uuid.uuid4()), status_msg_ascii)
         except Exception as e:
             backoff = min(backoff*2,10)
-            logger.warning('Exception in rtkrover telnet comms %s\nretry in %f seconds'%(e,backoff))
+            exception_message = 'Exception in rtkrover telnet comms %s\nretry in %f seconds %f'%(e,backoff, time.time())
+            RtkRoverSocketHandler.new_message(str(uuid.uuid4()), exception_message)
+            logger.warning(exception_message)
 
 
 
