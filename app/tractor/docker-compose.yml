@@ -1,0 +1,40 @@
+version: '2'
+networks: {}
+volumes: {}
+services:
+  rtkrover:
+    build:
+      dockerfile: app/tractor/Dockerfile.rtkrover
+      context: ./
+    privileged: true
+    restart: always
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"
+    expose:
+      - 2023
+      - 2024
+      - 9797
+    volumes:
+      - "/etc/farm_ng:/etc/farm_ng"
+  frontend:
+    build:
+      dockerfile: app/tractor/Dockerfile.frontend
+      context: ./
+    restart: always
+    ports:
+      - "80:8080"
+    volumes:
+      - "/etc/farm_ng:/etc/farm_ng"
+  canbus:
+    build:
+      context: app/tractor/canbus/
+    cap_add:
+      - all
+    restart: always
+    privileged: true
+    tty: true
+    restart: always
+    network_mode: host
+    volumes:
+      - /dev:/dev
+      - /lib/modules:/lib/modules
