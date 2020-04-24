@@ -37,9 +37,7 @@ class Application(tornado.web.Application):
 
 
 class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        #this is matthew's fuckery - trying to link css 
-        #why does it think the root directory is templates?  
+    def get(self):  
         self.render("index.html", messages=RtkRoverSocketHandler.cache)
 
 
