@@ -7,33 +7,39 @@ import tornado.gen
 import tornado.ioloop
 import tornado.tcpclient
 import tornado.web
-import tornado.web
 import tornado.websocket
 import uuid
+from tornado.options import define, options
 
 
 logger = logging.getLogger("fe")
 logger.setLevel(logging.INFO)
 
 
-
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
-            (r"/", MainHandler),
+            (r"/", MainHandler), #GET request, called from root directory localhost:8080/ 
             (r"/rtkroverstatussocket", RtkRoverSocketHandler),
         ]
+        
         settings = dict(
             cookie_secret="__TODO:_GENERATE_YOUR_OWN_RANDOM_VALUE_HERE__",
             template_path=os.path.join(os.path.dirname(__file__), "templates"),
             static_path=os.path.join(os.path.dirname(__file__), "static"),
             xsrf_cookies=True,
         )
+        
+        print(settings)
+        print('template path:    ', settings['template_path'])
+        print('static_path:    ', settings['static_path'])
         super(Application, self).__init__(handlers, **settings)
 
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
+        #this is matthew's fuckery - trying to link css 
+        #why does it think the root directory is templates?  
         self.render("index.html", messages=RtkRoverSocketHandler.cache)
 
 
@@ -107,7 +113,9 @@ def rtkrcv_telnet_loop(rtkrover_host):
                 RtkRoverSocketHandler.new_message(str(uuid.uuid4()), status_msg_ascii)
         except Exception as e:
             backoff = min(backoff*2,10)
-            exception_message = 'Exception in rtkrover telnet comms %s\nretry in %f seconds %f'%(e,backoff, time.time())
+            exception_message = (
+                'Exception in rtkrover telnet comms\n %s\nretry in %f seconds %f'%(e,backoff, time.time())
+                )
             RtkRoverSocketHandler.new_message(str(uuid.uuid4()), exception_message)
             logger.warning(exception_message)
 
