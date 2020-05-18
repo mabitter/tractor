@@ -1,18 +1,18 @@
 import argparse
+import asyncio
 import logging
 import os
-import re
-import time
 import uuid
 from typing import List
 from typing import Set
 
 import tornado.gen
 import tornado.ioloop
+import tornado.platform.asyncio
 import tornado.tcpclient
 import tornado.web
 import tornado.websocket
-
+from farm_ng.rtkcli import RtkClient
 
 logger = logging.getLogger('fe')
 logger.setLevel(logging.INFO)
@@ -20,10 +20,21 @@ logger.setLevel(logging.INFO)
 
 class Application(tornado.web.Application):
     def __init__(self):
+        third_party_path = os.path.join(
+            os.environ['FARM_NG_ROOT'],
+            'jsm/third_party',
+        )
+
         handlers = [
             # GET request, called from root directory localhost:8080/
             (r'/', MainHandler),
+            (
+                r'/third_party/(.*)', tornado.web.StaticFileHandler,
+                dict(path=third_party_path),
+            ),
+            (r'/mapper', MapperHandler),
             (r'/rtkroverstatussocket', RtkRoverSocketHandler),
+            (r'/rtkroversolutionsocket', RtkRoverSolutionSocketHandler),
         ]
 
         settings = dict(
@@ -31,6 +42,7 @@ class Application(tornado.web.Application):
             template_path=os.path.join(os.path.dirname(__file__), 'templates'),
             static_path=os.path.join(os.path.dirname(__file__), 'static'),
             xsrf_cookies=True,
+            debug=True,
         )
 
         print(settings)
@@ -44,8 +56,13 @@ class MainHandler(tornado.web.RequestHandler):
         self.render('index.html', messages=RtkRoverSocketHandler.cache)
 
 
+class MapperHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.render('mapper.html')
+
+
 class RtkRoverSocketHandler(tornado.websocket.WebSocketHandler):
-    waiters: Set[tornado.websockethandler.Websockethandler] = set()
+    waiters: Set[tornado.websocket.WebSocketHandler] = set()
     cache: List[str] = []
     cache_size = 200
 
@@ -75,7 +92,8 @@ class RtkRoverSocketHandler(tornado.websocket.WebSocketHandler):
                 logger.error('Error sending message, %s', e, exc_info=True)
 
     @classmethod
-    def new_message(cls, message_id, message):
+    def new_message(cls, message):
+        message_id = str(uuid.uuid4())
         status_msg = {'id': message_id, 'body': message}
         status_msg['html'] = tornado.escape.to_basestring(
             '<div id="rtkrover_status"><pre>%s</pre></div>' % (message),
@@ -84,63 +102,51 @@ class RtkRoverSocketHandler(tornado.websocket.WebSocketHandler):
         RtkRoverSocketHandler.send_updates(status_msg)
 
 
-def escape_ansi(line):
-    ansi_escape = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
-    return ansi_escape.sub('', line)
+class RtkRoverSolutionSocketHandler(tornado.websocket.WebSocketHandler):
+    waiters: Set[tornado.websocket.WebSocketHandler] = set()
 
+    def get_compression_options(self):
+        # Non-None enables compression with default options.
+        return {}
 
-@tornado.gen.coroutine
-def rtkrcv_telnet_loop(rtkrover_host):
-    backoff = 0.25
-    while True:
-        try:
-            yield tornado.gen.sleep(backoff)
-            logger.info('connecting to rtkrover host: %s' % rtkrover_host)
-            stream = yield tornado.tcpclient.TCPClient().connect(
-                rtkrover_host, 2023, timeout=5,
-            )
-            logger.info('connected to rtkrover host: %s' % rtkrover_host)
+    def open(self):
+        RtkRoverSolutionSocketHandler.waiters.add(self)
 
-            message = yield stream.read_until(b'password: ')
-            message = message.strip(b'\xff\xfb\x03\xff\xfb\x01\r\n\x1b[1m')
-            logger.info(message.decode('ascii'))
-            yield stream.write(b'admin\r\n')
-            message = yield stream.read_until(b'\r\n')
-            logging.info(message.decode('ascii'))
-            yield stream.write(b'status 1\r\n')
-            backoff = 0.25  # reset backoff
-            while True:
-                message = yield stream.read_until(b'\x1b[2J')
-                status_msg_ascii = escape_ansi(
-                    message.rstrip(b'\x1b[2J').decode('ascii'),
-                )
-                RtkRoverSocketHandler.new_message(
-                    str(uuid.uuid4()), status_msg_ascii,
-                )
-        except Exception as e:
-            backoff = min(backoff*2, 10)
-            exception_message = (
-                '''Exception in rtkrover telnet comms
-                {}\nretry in {:f} seconds {:f}'''.format(
-                    e, backoff, time.time(),
-                )
-            )
+    def on_close(self):
+        RtkRoverSolutionSocketHandler.waiters.remove(self)
 
-            RtkRoverSocketHandler.new_message(
-                str(uuid.uuid4()), exception_message,
-            )
-            logger.warning(exception_message)
+    @classmethod
+    def send_solution(cls, solution_msg):
+        logger.debug('sending message to %d waiters', len(cls.waiters))
+        for waiter in cls.waiters:
+            try:
+                waiter.write_message(solution_msg)
+            except RuntimeError as e:
+                logger.error('Error sending message, %s', e, exc_info=True)
 
 
 def main():
+    tornado.platform.asyncio.AsyncIOMainLoop().install()
+    loop = asyncio.get_event_loop()
     parser = argparse.ArgumentParser()
     parser.add_argument('--rtkrover-host', default='localhost')
     args = parser.parse_args()
+
     app = Application()
     app.listen(8080)
-    loop = tornado.ioloop.IOLoop.current()
-    loop.spawn_callback(rtkrcv_telnet_loop, args.rtkrover_host)
-    loop.start()
+
+    rtkclient = RtkClient(
+        rtkhost=args.rtkrover_host,
+        rtkport=9797,
+        rtktelnetport=2023,
+        event_loop=loop,
+        status_callback=RtkRoverSocketHandler.new_message,
+        solution_callback=RtkRoverSolutionSocketHandler.send_solution,
+    )
+
+    logger.info('rtkclient %s', rtkclient)
+
+    loop.run_forever()
 
 
 if __name__ == '__main__':
