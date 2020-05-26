@@ -1,9 +1,12 @@
-.mypy_cache
 \#*
 .\#*
 *~
+
+# Python
 __pycache__
 *.pyc
+.mypy_cache
+venv
 
 # Prerequisites
 *.d

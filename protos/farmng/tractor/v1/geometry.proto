@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package farmng.tractor.v1;
+
+message Vec2 {
+  double x = 1;
+  double y = 2;
+}
+
+message PartialVec2 {
+  google.protobuf.DoubleValue x = 1;
+  google.protobuf.DoubleValue y = 2;
+}
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message PartialVec3 {
+  google.protobuf.DoubleValue x = 1;
+  google.protobuf.DoubleValue y = 2;
+  google.protobuf.DoubleValue z = 3;
+}
+
+message Quaternion {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+message SE3Pose {
+  Vec3 position = 1;
+  Quaternion rotation = 2;
+}

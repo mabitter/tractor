@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+import "farmng/tractor/v1/geometry.proto";
+
+package farmng.tractor.v1;
+
+message StreamStatusRequest {}
+
+// TODO: Pick a better name than 'Status'
+message Status {
+  SE3Pose pose = 1;
+}

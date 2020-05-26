@@ -8,4 +8,4 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 export FARM_NG_ROOT=$( cd "$( dirname "${SOURCE}" )" >/dev/null 2>&1 && pwd )
-export PYTHONPATH=$FARM_NG_ROOT/python
+export PYTHONPATH=$FARM_NG_ROOT/python:$FARM_NG_ROOT/python/genproto

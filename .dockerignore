@@ -2,3 +2,10 @@
 *~
 *.pyc
 *__pycache__
+
+# Python
+venv
+
+# JS
+app/frontend/dist
+app/frontend/node_modules

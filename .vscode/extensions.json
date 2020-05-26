@@ -1,6 +1,8 @@
 {
 	"recommendations": [
 		"esbenp.prettier-vscode",
-		"dbaeumer.vscode-eslint"
+		"dbaeumer.vscode-eslint",
+		"ms-python.python",
+		"zxh404.vscode-proto3"
 	]
 }
