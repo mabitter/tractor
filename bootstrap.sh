@@ -1,4 +1,4 @@
-# Get directory where this script is located
+#!/bin/bash -ex
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
   DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
@@ -8,5 +8,20 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 export FARM_NG_ROOT=$( cd "$( dirname "${SOURCE}" )" >/dev/null 2>&1 && pwd )
-export PYTHONPATH=$FARM_NG_ROOT/python:$FARM_NG_ROOT/python/genproto
+
+# install system deps, punt for now.
+# sudo apt-get update
+# sudo apt-get install -y \
+#      python3-pip
+# sudo pip3 install virtualenv
+
+if [ ! -f $FARM_NG_ROOT/env/bin/activate ]; then
+    virtualenv $FARM_NG_ROOT/env    
+fi
+
 . $FARM_NG_ROOT/env/bin/activate
+pip install -r $FARM_NG_ROOT/requirements.txt
+
+
+
+

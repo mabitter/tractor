@@ -7,7 +7,7 @@ type GroundProps = {
 
 export const Ground: React.FC<GroundProps> = (props) => {
   const onClick = (event: PointerEvent): void => {
-    if (!event.altKey) {
+    if (!event.ctrlKey) {
       return;
     }
     props.onClick(event);

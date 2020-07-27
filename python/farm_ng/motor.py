@@ -4,13 +4,19 @@ import math
 import socket
 import struct
 import sys
-
+import numpy as np
+import farm_ng.proio_utils
 import linuxfd
 from farm_ng.canbus import CANSocket
+from farm_ng_proto.tractor.v1 import motor_pb2
+from google.protobuf.text_format import MessageToString
+from google.protobuf.timestamp_pb2 import Timestamp
 
 logger = logging.getLogger('farm_ng.motor')
 
 logger.setLevel(logging.INFO)
+
+plog = farm_ng.proio_utils.get_proio_logger()
 
 
 VESC_SET_DUTY = 0
@@ -34,7 +40,11 @@ def vesc_parse_status_msg_1(data):
     current /= 1e1
     duty_cycle /= 1e3
     logger.debug('rpm %d current %f duty_cycle %f', rpm, current, duty_cycle)
-    return dict(rpm=rpm, current=current, duty_cycle=duty_cycle)
+    state = motor_pb2.MotorControllerState()
+    state.rpm.value = rpm
+    state.current.value = current
+    state.duty_cycle.value = duty_cycle
+    return state
 
 
 def vesc_parse_status_msg_2(data):
@@ -49,7 +59,10 @@ def vesc_parse_status_msg_2(data):
         'amp_hours %f amp_hours_charged %f',
         amp_hours, amp_hours_charged,
     )
-    return dict(amp_hours=amp_hours, amp_hours_charged=amp_hours_charged)
+    state = motor_pb2.MotorControllerState()
+    state.amp_hours.value = amp_hours
+    state.amp_hours_charged.value = amp_hours_charged
+    return state
 
 
 def vesc_parse_status_msg_3(data):
@@ -64,7 +77,10 @@ def vesc_parse_status_msg_3(data):
         'watt_hours %f watt_hours_charged %f',
         watt_hours, watt_hours_charged,
     )
-    return dict(watt_hours=watt_hours, watt_hours_charged=watt_hours_charged)
+    state = motor_pb2.MotorControllerState()
+    state.watt_hours.value = watt_hours
+    state.watt_hours_charged.value = watt_hours_charged
+    return state
 
 
 def vesc_parse_status_msg_4(data):
@@ -82,10 +98,12 @@ def vesc_parse_status_msg_4(data):
         'temp_fet %f temp_motor %f current_in %f pid_pos %f',
         temp_fet, temp_motor, current_in, pid_pos,
     )
-    return dict(
-        temp_fet=temp_fet, temp_motor=temp_motor,
-        current_in=current_in, pid_pos=pid_pos,
-    )
+    state = motor_pb2.MotorControllerState()
+    state.temp_fet.value = temp_fet
+    state.temp_motor.value = temp_motor
+    state.current_in.value = current_in
+    state.pid_pos.value = pid_pos
+    return state
 
 
 def vesc_parse_status_msg_5(data):
@@ -96,7 +114,10 @@ def vesc_parse_status_msg_5(data):
     tachometer, input_voltage, _ = msg
     input_voltage /= 1e1
     logger.debug('tachometer %f input_voltage %f', tachometer, input_voltage)
-    return dict(tachometer=tachometer, input_voltage=input_voltage)
+    state = motor_pb2.MotorControllerState()
+    state.tachometer.value = tachometer
+    state.input_voltage.value = input_voltage
+    return state
 
 
 g_vesc_msg_parsers = {
@@ -110,21 +131,21 @@ g_vesc_msg_parsers = {
 
 class HubMotor:
     def __init__(
-        self, wheel_radius, gear_ratio, poll_pairs,
-        can_node_id, can_socket,
+            self, name, wheel_radius, gear_ratio, poll_pairs,
+            can_node_id, can_socket,
     ):
+        self.name = name
         self.can_node_id = can_node_id
         self.can_socket = can_socket
         self.wheel_radius = wheel_radius
         self.gear_ratio = gear_ratio
         self.poll_pairs = poll_pairs
         self.max_current = 20
-        self._state_dict = dict()
-        self.can_socket.add_reader(
-            lambda cob_id, data: self._handle_can_message(cob_id, data),
-        )
+        self._latest_state = motor_pb2.MotorControllerState()
+        self._latest_stamp = Timestamp()
+        self.can_socket.add_reader(self._handle_can_message)
 
-    def _handle_can_message(self, cob_id, data):
+    def _handle_can_message(self, cob_id, data, stamp):
         can_node_id = (cob_id & 0xff)
         if can_node_id != self.can_node_id:
             return
@@ -136,12 +157,22 @@ class HubMotor:
             )
             return
         logger.debug('can node id %02x', can_node_id)
-        self._state_dict.update(parser(data))
+        state_msg = parser(data)
+        self._latest_state.MergeFrom(state_msg)
+        self._latest_stamp.CopyFrom(stamp)
+
+        if command == VESC_STATUS_MSG_5:
+            # only log on the 5th vesc message, as we have complete state at that point.
+            event = plog.make_event({'%s/state' % self.name: self._latest_state}, stamp=self._latest_stamp)
+            plog.writer().push(event)
 
     def _send_can_command(self, command, data):
         cob_id = int(self.can_node_id) | (command << 8)
-        # print('send %x'%cob_id)
-        self.can_socket.send(cob_id, data, flags=socket.CAN_EFF_FLAG)
+        # print('send %x'%cob_id, '%x'%socket.CAN_EFF_FLAG)
+        # socket.CAN_EFF_FLAG for some reason on raspberry pi this is
+        # the wrong value (-0x80000000 )
+        eff_flag=0x80000000 
+        self.can_socket.send(cob_id, data, flags=eff_flag)
 
     def send_rpm_command(self, rpm):
         RPM_FORMAT = '>i'  # big endian, int32
@@ -165,13 +196,21 @@ class HubMotor:
         )
         self._send_can_command(VESC_SET_CURRENT, data)
 
+    def send_current_brake_command(self, current_amps):
+        CURRENT_BRAKE_FORMAT = '>i'  # big endian, int32
+        data = struct.pack(
+            CURRENT_BRAKE_FORMAT, int(
+                1000*np.clip(current_amps, 0, self.max_current))
+            )
+        self._send_can_command(VESC_SET_CURRENT_BRAKE, data)
+
     def get_state(self):
-        return self._state_dict
+        return self._latest_state
 
 
 def main():
 
-    command_rate_hz = 50
+    command_rate_hz = 100
     command_period_seconds = 1.0 / command_rate_hz
     # rtc=False means a monotonic clock for realtime loop as it won't
     # be adjusted by the system admin
@@ -192,23 +231,26 @@ def main():
     print(f'Listening on can0')
     loop = asyncio.get_event_loop()
 
-    radius = (15.0*0.0254)/2.0  # in meters, 15" diameter wheels
-    gear_ratio = 6
-    poll_pairs = 15
-    right_motor = HubMotor(radius, gear_ratio, poll_pairs, 7, can_socket)
-    left_motor = HubMotor(radius, gear_ratio, poll_pairs, 9, can_socket)
+    radius = (17.0*0.0254)/2.0  # in meters, 17" diameter wheels
+    gear_ratio = 29.9
+    poll_pairs = 8
+    right_motor = HubMotor('right_motor', radius, gear_ratio, poll_pairs, 7, can_socket)
+    left_motor = HubMotor('left_motor', radius, gear_ratio, poll_pairs, 9, can_socket)
 
     count = [0]
 
     def command_loop():
         periodic.read()
-        if count[0] % command_rate_hz == 0:
+        if count[0] % (30*command_rate_hz) == 0:
+            plog.writer().flush()
+        if count[0] % (2*command_rate_hz) == 0:
             logger.info(
                 'right: %s\nleft: %s',
-                right_motor.get_state(), left_motor.get_state(),
+                MessageToString(right_motor.get_state(), as_one_line=True),
+                MessageToString(left_motor.get_state(), as_one_line=True),
             )
-        # right_motor.send_velocity_command(1.0)
-        # left_motor.send_velocity_command(1.0)
+        right_motor.send_velocity_command(0.5)
+        left_motor.send_velocity_command(0.5)
         count[0] += 1
 
     loop.add_reader(can_socket, lambda: can_socket.recv())

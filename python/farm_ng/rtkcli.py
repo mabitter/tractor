@@ -3,11 +3,23 @@ import logging
 import re
 import sys
 
+import farm_ng.proio_utils
+from farm_ng.periodic import Periodic
+from farm_ng_proto.tractor.v1.rtk_pb2 import RtkServiceStatus
+from farm_ng_proto.tractor.v1.rtk_pb2 import RtkSolution
+from google.protobuf.text_format import MessageToString
+
 logger = logging.getLogger('rtkcli')
+plog = farm_ng.proio_utils.get_proio_logger()
+
 
 _status_map = {
-    '1': 'fix', '2': 'float', '3': 'sbas',
-    '4': 'dgps', '5': 'single', '6': 'ppp',
+    '1': RtkSolution.Status.STATUS_FIX,
+    '2': RtkSolution.Status.STATUS_FLOAT,
+    '3': RtkSolution.Status.STATUS_SBAS,
+    '4': RtkSolution.Status.STATUS_DGPS,
+    '5': RtkSolution.Status.STATUS_SINGLE,
+    '6': RtkSolution.Status.STATUS_PPP,
 }
 
 
@@ -18,6 +30,43 @@ def _escape_ansi(line):
 
 def _status_mapper(value):
     return _status_map[value]
+
+
+def solution_to_proto(sol):
+    pb = RtkSolution()
+    pb.stamp_gps.FromJsonString(sol['date'].replace('/', '-') + 'T' + sol['time_gps_utc']+'Z')
+
+    pb.enu_baseline_m.x = sol['e_baseline_m']
+    pb.enu_baseline_m.y = sol['n_baseline_m']
+    pb.enu_baseline_m.z = sol['u_baseline_m']
+
+    pb.status = sol['status']
+    pb.n_satelites = sol['n_satelites']
+
+    pb.std_enu.x = sol['std_e_m']
+    pb.std_enu.y = sol['std_n_m']
+    pb.std_enu.z = sol['std_u_m']
+
+    pb.std_en_nu_ue.x = sol['std_en_m']
+    pb.std_en_nu_ue.y = sol['std_nu_m']
+    pb.std_en_nu_ue.z = sol['std_ue_m']
+
+    pb.age = sol['age']
+    pb.ar_ratio = sol['ar_ratio']
+
+    pb.velocity_enu_ms.x = sol['velocity_e_ms']
+    pb.velocity_enu_ms.y = sol['velocity_n_ms']
+    pb.velocity_enu_ms.z = sol['velocity_u_ms']
+
+    pb.std_velocity_enu.x = sol['std_ve']
+    pb.std_velocity_enu.y = sol['std_vn']
+    pb.std_velocity_enu.z = sol['std_vu']
+
+    pb.std_velocity_en_nu_ue.x = sol['std_ven']
+    pb.std_velocity_en_nu_ue.y = sol['std_vnu']
+    pb.std_velocity_en_nu_ue.z = sol['std_vue']
+
+    return pb
 
 
 class RtkClient:
@@ -38,9 +87,9 @@ class RtkClient:
         ('std_e_m', float),
         ('std_n_m', float),
         ('std_u_m', float),
-        ('sde_en_m', float),
-        ('sde_nu_m', float),
-        ('sde_ue_m', float),
+        ('std_en_m', float),
+        ('std_nu_m', float),
+        ('std_ue_m', float),
         ('age', float),
         ('ar_ratio', float),
         ('velocity_e_ms', float),
@@ -59,10 +108,10 @@ class RtkClient:
         self.rtkport = rtkport
         self.rtktelnetport = rtktelnetport
 
-        self.n_states = 10000
+        self.n_solution = 100
         self.n_status_messages = 100
         self.status_messages = []
-        self.gps_states = []
+        self.gps_solution = []
         self.event_loop = event_loop
 
         self.status_callback = status_callback
@@ -88,18 +137,24 @@ class RtkClient:
         )
 
         # create a dict of field names to field values
-        gps_state = {
+        gps_solution_dict = {
             key: mapf(value) for (key, mapf),
             value in zip(RtkClient.field_names, fields)
         }
 
-        if self.solution_callback is not None:
-            self.solution_callback(gps_state)
+        gps_solution = solution_to_proto(gps_solution_dict)
+        plog.writer().push(
+            plog.make_event({'rtk/solution': gps_solution}),
+        )
 
-        self.gps_states.append(gps_state)
-        logger.debug(gps_state)
-        if len(self.gps_states) > self.n_states:
-            self.gps_states.pop(0)
+        if self.solution_callback is not None:
+            self.solution_callback(gps_solution)
+
+        self.gps_solution.append(gps_solution)
+
+        logger.debug(MessageToString(gps_solution, as_one_line=True))
+        if len(self.gps_solution) > self.n_solution:
+            self.gps_solution.pop(0)
 
     async def connect_and_read_loop(self):
         await self.connect()
@@ -129,7 +184,7 @@ class RtkClient:
             writer.write(b'admin\r\n')
             message = await reader.readuntil(b'rtkrcv>')
             logger.info('222' + message.decode('ascii'))
-            writer.write(b'status 1\r\n')
+            writer.write(b'status 10\r\n')
             while True:
                 message = await reader.readuntil(b'\x1b[2J')
                 status_msg_ascii = _escape_ansi(
@@ -140,6 +195,12 @@ class RtkClient:
 
                 self.status_messages.append(status_msg_ascii)
                 logger.debug(status_msg_ascii)
+                status_pb = RtkServiceStatus()
+                status_pb.message = status_msg_ascii
+                plog.writer().push(
+                    plog.make_event({'rtk/service_status': status_pb}),
+                )
+
                 if len(self.status_messages) > self.n_status_messages:
                     self.status_messages.pop(0)
 
@@ -156,6 +217,7 @@ def main():
     loop = asyncio.get_event_loop()
     rtkclient = RtkClient('localhost', 9797, 2023, loop)
     logger.info('rtk client: %s', rtkclient)
+    _ = Periodic(30, loop, lambda: plog.writer().flush())
     loop.run_forever()
 
 

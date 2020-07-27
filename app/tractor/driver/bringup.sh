@@ -1,4 +1,4 @@
-# Get directory where this script is located
+#!/bin/bash -ex
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
   DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
@@ -7,6 +7,11 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
   # relative to the path where the symlink file was located
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
-export FARM_NG_ROOT=$( cd "$( dirname "${SOURCE}" )" >/dev/null 2>&1 && pwd )
-export PYTHONPATH=$FARM_NG_ROOT/python:$FARM_NG_ROOT/python/genproto
-. $FARM_NG_ROOT/env/bin/activate
+export SERVICE_DIR=$( cd "$( dirname "${SOURCE}" )" >/dev/null 2>&1 && pwd )
+
+$SERVICE_DIR/bringup_can.sh
+while true
+do
+    ip -details -statistics link show can0
+    sleep 5
+done
