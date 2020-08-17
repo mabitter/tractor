@@ -1,21 +1,25 @@
 import asyncio
 import logging
-import math
 import sys
 
-import farm_ng.proio_utils
 from farm_ng.canbus import CANSocket
-from farm_ng.joystick import MaybeJoystick
+from farm_ng.ipc import get_event_bus
+from farm_ng.ipc import make_event
 from farm_ng.motor import HubMotor
 from farm_ng.periodic import Periodic
-from google.protobuf.text_format import MessageToString
+from farm_ng.steering import SteeringClient
 from farm_ng.tractor.kinematics import TractorKinematics
-import numpy as np
+from farm_ng.utils.proto import se3_to_proto
+from farm_ng_proto.tractor.v1.geometry_pb2 import NamedSE3Pose
+from google.protobuf.text_format import MessageToString
+from google.protobuf.timestamp_pb2 import Timestamp
+from liegroups import SE3
 
 logger = logging.getLogger('tractor.driver')
-plog = farm_ng.proio_utils.get_proio_logger()
+logger.setLevel(logging.INFO)
 
 kinematics = TractorKinematics()
+
 
 class TractorController:
     def __init__(self, event_loop):
@@ -25,9 +29,14 @@ class TractorController:
         self.n_cycle = 0
         self.speed = 0.0
         self.angular = 0.0
+        # self.record_counter = 0
+        # self.recording = False
+        self.event_bus = get_event_bus()
         self.lock_out = False
         self.can_socket = CANSocket('can0', self.event_loop)
-        self.joystick = MaybeJoystick('/dev/input/js0', self.event_loop)
+        self.steering = SteeringClient()
+
+        self.odom_pose_tractor = SE3.identity()
 
         radius = (17*0.0254)/2.0  # in meters, 15" diameter wheels
         gear_ratio = 29.9
@@ -43,41 +52,60 @@ class TractorController:
 
         self.control_timer = Periodic(
             self.command_period_seconds, self.event_loop,
-            self._command_loop,
+            self._command_loop, name='control_loop',
         )
 
-    def _command_loop(self, n_periods):
-        if (self.n_cycle % (2*self.command_rate_hz)) == 0:
-            logger.info('right motor: %s', MessageToString(self.right_motor.get_state(), as_one_line=True))
-            logger.info('left motor: %s', MessageToString(self.left_motor.get_state(), as_one_line=True))
-        self.n_cycle += 1
+        self._last_odom_stamp = None
+        self._left_vel = 0.0
+        self._right_vel = 0.0
 
-        brake_current=10.0
-        
-        if ( n_periods*self.command_period_seconds >= 0.25 or
-             not self.joystick.is_connected() or self.joystick.get_axis_state('rx', -1) < 0.0):
+    def _command_loop(self, n_periods):
+        now = Timestamp()
+        now.GetCurrentTime()
+
+        if (self.n_cycle % (5*self.command_rate_hz)) == 0:
+            logger.info(
+                '\nright motor:\n  %s\nleft motor:\n  %s\n odom_pose_tractor %s left_vel %f right_vel %f',
+                MessageToString(self.right_motor.get_state(), as_one_line=True),
+                MessageToString(self.left_motor.get_state(), as_one_line=True),
+                self.odom_pose_tractor, self._left_vel, self._right_vel,
+            )
+
+        self._left_vel = self.left_motor.average_velocity()
+        self._right_vel = self.right_motor.average_velocity()
+        if self._last_odom_stamp is not None:
+            dt = (now.ToMicroseconds() - self._last_odom_stamp.ToMicroseconds())*1e-6
+            assert dt > 0.0
+            self.odom_pose_tractor = kinematics.evolve_world_pose_tractor(
+                self.odom_pose_tractor,
+                self._left_vel,
+                self._right_vel,
+                dt,
+            )
+            pose_msg = NamedSE3Pose()
+            pose_msg.a_pose_b.CopyFrom(se3_to_proto(self.odom_pose_tractor))
+            pose_msg.frame_a = 'odometry/wheel'
+            pose_msg.frame_b = 'tractor/base'
+            self.event_bus.send(make_event('pose/tractor/base', pose_msg, stamp=now))
+
+        self._last_odom_stamp = now
+
+        self.n_cycle += 1
+        brake_current = 10.0
+        steering_command = self.steering.get_steering_command()
+        if steering_command.brake > 0.0:
+            self.right_motor.send_current_brake_command(brake_current)
+            self.left_motor.send_current_brake_command(brake_current)
             self.speed = 0.0
             self.angular = 0.0
-            self.right_motor.send_current_brake_command(brake_current)
-            self.left_motor.send_current_brake_command(brake_current)                
-            self.lock_out = True
             return
-        else:
-            speed = np.clip(-self.joystick.get_axis_state('y', 0), -1.0, 1.0)
-            angular = np.clip(-self.joystick.get_axis_state('z', 0), -1.0, 1.0)
-            if self.lock_out and (np.abs(speed) > 0.1 or np.abs(angular) > 0.1):
-                speed = 0.0
-                angular = 0.0
-            else:
-                self.lock_out = False
-            speed = 1.5*speed
-            angular = angular*np.pi/3.0
-        alpha = 0.02
-        delta_speed = np.clip(speed - self.speed, -alpha, alpha)
-        delta_angular = np.clip(angular - self.angular, -alpha, alpha)
-        self.speed = np.clip(self.speed + delta_speed, -1.5, 1.5)
-        self.angular = np.clip(self.angular + delta_angular, -np.pi/3.0, np.pi/3.0)
+
+        alpha = 0.1
+        self.speed = self.speed * (1-alpha) + steering_command.velocity*alpha
+        self.angular = self.angular * (1-alpha) + steering_command.angular_velocity*alpha
+
         left, right = kinematics.unicycle_to_wheel_velocity(self.speed, self.angular)
+        # print(left,right)
         self.right_motor.send_velocity_command(right)
         self.left_motor.send_velocity_command(left)
 
@@ -85,9 +113,9 @@ class TractorController:
 def main():
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     event_loop = asyncio.get_event_loop()
+    get_event_bus('farm_ng.tractor.driver')
     controller = TractorController(event_loop)
     logger.info('Created controller %s', controller)
-    _ = Periodic(60, event_loop, lambda n_periods: plog.writer().flush())
     event_loop.run_forever()
 
 

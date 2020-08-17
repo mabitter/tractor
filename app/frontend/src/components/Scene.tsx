@@ -5,7 +5,6 @@ import { Tractor } from "./Tractor";
 import { Controls } from "./Controls";
 import { Lights } from "./Lights";
 import { Ground } from "./Ground";
-import { Waypoints } from "./Waypoints";
 import { Vector3 } from "three";
 import { gray300 } from "./colors";
 
@@ -20,7 +19,7 @@ export const Scene: React.FC = () => {
 
   return (
     <Canvas
-      style={{ background: gray300 }}
+      style={{ background: gray300, height: "400px", width: "400px" }}
       camera={{
         position: [2.5, 2.5, 2.5],
         fov: 60,
@@ -36,7 +35,6 @@ export const Scene: React.FC = () => {
       <Suspense fallback={null}>
         <Tractor />
       </Suspense>
-      <Waypoints waypoints={waypoints} />
     </Canvas>
   );
 };

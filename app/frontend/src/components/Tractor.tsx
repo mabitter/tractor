@@ -2,11 +2,8 @@ import { useState, useEffect } from "react";
 import * as React from "react";
 import { useLoader, ReactThreeFiber } from "react-three-fiber";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
-import { webSocketClient } from "../config";
-import { Quaternion, Vector3 } from "three";
-import { IWebSocketMessage } from "../models/IWebSocketMessage";
 import { red, gray900 } from "./colors";
-import { Status } from "../../genproto/farm_ng_proto/tractor/v1/status";
+import { Quaternion, Vector3 } from "three";
 
 export const Tractor: React.FC = () => {
   // TODO: Should this be bundled?
@@ -20,19 +17,8 @@ export const Tractor: React.FC = () => {
   );
 
   useEffect(() => {
-    webSocketClient.on("message", (message: IWebSocketMessage) => {
-      const status = message as Status;
-      if (!status.pose || !status.pose.position || !status.pose.rotation) {
-        // eslint-disable-next-line no-console
-        console.error("Unexpected status:", status);
-        return;
-      }
-      const { x: tx, y: ty, z: tz } = status.pose.position;
-      setPosition(new Vector3(tx, ty, tz));
-
-      const { x: qx, y: qy, z: qz, w: qw } = status.pose.rotation;
-      setQuaternion(new Quaternion(qx, qy, qz, qw));
-    });
+    setPosition(new Vector3(0, 0, 0));
+    setQuaternion(new Quaternion(0, 0, 0, 0));
   }, []);
 
   return (
