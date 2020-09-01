@@ -92,7 +92,7 @@ export const PoseViz: React.FC = () => {
         if (!ev.data) return;
         const pose = NamedSE3Pose.decode(ev.data.value);
         const poseNode = findFrameB(root, pose.frameB);
-        if (poseNode) {
+        if (poseNode && poseNode.pose.frameA == pose.frameA) {
           poseNode.pose = pose;
         } else {
           const parent = findFrameB(root, pose.frameA);

@@ -1,18 +1,31 @@
-// License: Apache 2.0. See LICENSE file in root directory.
-// Copyright(c) 2019 Intel Corporation. All Rights Reserved.
+#include <chrono>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
+
+#include <glog/logging.h>
+#include <google/protobuf/util/time_util.h>
 #include <librealsense2/rs.hpp>
+#include <opencv2/opencv.hpp>
+
+extern "C" {
+#include "apriltag.h"
+#include "tag36h11.h"
+}
 
 #include <farm_ng/ipc.h>
+#include <farm_ng/sophus_protobuf.h>
+
+#include <farm_ng_proto/tractor/v1/apriltag.pb.h>
 #include <farm_ng_proto/tractor/v1/geometry.pb.h>
 #include <farm_ng_proto/tractor/v1/tracking_camera.pb.h>
-#include <google/protobuf/util/time_util.h>
-
-#include <opencv2/opencv.hpp>
 
 using farm_ng_proto::tractor::v1::Event;
 using farm_ng_proto::tractor::v1::NamedSE3Pose;
+using farm_ng_proto::tractor::v1::Vec2;
+
+using farm_ng_proto::tractor::v1::ApriltagDetection;
+using farm_ng_proto::tractor::v1::ApriltagDetections;
 using farm_ng_proto::tractor::v1::TrackingCameraPoseFrame;
 
 namespace farm_ng {
@@ -43,11 +56,13 @@ static cv::Mat frame_to_mat(const rs2::frame& f) {
 
   throw std::runtime_error("Frame format is not supported yet!");
 }
+
 void SetVec3FromRs(farm_ng_proto::tractor::v1::Vec3* out, rs2_vector vec) {
   out->set_x(vec.x);
   out->set_y(vec.y);
   out->set_z(vec.z);
 }
+
 void SetQuatFromRs(farm_ng_proto::tractor::v1::Quaternion* out,
                    rs2_quaternion vec) {
   out->set_w(vec.w);
@@ -99,13 +114,18 @@ Event ToNamedPoseEvent(const rs2::pose_frame& rs_pose_frame) {
   // here we distinguish where visual_odom frame by which camera it refers to,
   // will have to connect each camera pose to the mobile base with an extrinsic
   // transform
-  vodom_pose_t265.set_frame_a("odometry/tracking_camera/front");
-  vodom_pose_t265.set_frame_b("tracking_camera/front");
+  vodom_pose_t265.set_frame_b("odometry/tracking_camera/front");
+  vodom_pose_t265.set_frame_a("tracking_camera/front");
   auto pose_data = rs_pose_frame.get_pose_data();
   SetVec3FromRs(vodom_pose_t265.mutable_a_pose_b()->mutable_position(),
                 pose_data.translation);
   SetQuatFromRs(vodom_pose_t265.mutable_a_pose_b()->mutable_rotation(),
                 pose_data.rotation);
+
+  Sophus::SE3d se3;
+  ProtoToSophus(vodom_pose_t265.a_pose_b(), &se3);
+  SophusToProto(se3.inverse(), vodom_pose_t265.mutable_a_pose_b());
+
   Event event =
       farm_ng::MakeEvent("pose/tracking_camera/front", vodom_pose_t265);
   *event.mutable_stamp() =
@@ -114,19 +134,87 @@ Event ToNamedPoseEvent(const rs2::pose_frame& rs_pose_frame) {
   return event;
 }
 
+class ApriltagDetector {
+  // see
+  // https://github.com/AprilRobotics/apriltag/blob/master/example/opencv_demo.cc
+ public:
+  ApriltagDetector() {
+    tag_family_ = tag36h11_create();
+    tag_detector_ = apriltag_detector_create();
+    apriltag_detector_add_family(tag_detector_, tag_family_);
+    tag_detector_->quad_decimate = 2.0;
+    tag_detector_->quad_sigma = 0.8;
+    tag_detector_->nthreads = 1;
+    tag_detector_->debug = false;
+    tag_detector_->refine_edges = true;
+  }
+
+  ~ApriltagDetector() {
+    apriltag_detector_destroy(tag_detector_);
+    tag36h11_destroy(tag_family_);
+  }
+
+  ApriltagDetections Detect(cv::Mat gray) {
+    CHECK_EQ(gray.channels(), 1);
+    CHECK_EQ(gray.type(), CV_8UC1);
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Make an image_u8_t header for the Mat data
+    image_u8_t im = {.width = gray.cols,
+                     .height = gray.rows,
+                     .stride = gray.cols,
+                     .buf = gray.data};
+
+    zarray_t* detections = apriltag_detector_detect(tag_detector_, &im);
+
+    // copy detections into protobuf
+    ApriltagDetections pb_out;
+    for (int i = 0; i < zarray_size(detections); i++) {
+      apriltag_detection_t* det;
+      zarray_get(detections, i, &det);
+
+      ApriltagDetection* detection = pb_out.add_detections();
+      for (int j = 0; j < 4; j++) {
+        Vec2* p_j = detection->add_p();
+        p_j->set_x(det->p[j][0]);
+        p_j->set_y(det->p[j][1]);
+      }
+      detection->mutable_c()->set_x(det->c[0]);
+      detection->mutable_c()->set_y(det->c[1]);
+      detection->set_id(det->id);
+      detection->set_hamming(static_cast<uint8_t>(det->hamming));
+      detection->set_decision_margin(det->decision_margin);
+    }
+    apriltag_detections_destroy(detections);
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    LOG_EVERY_N(INFO, 10) << "april tag detection took: " << duration.count()
+                          << " microseconds\n"
+                          << pb_out.ShortDebugString();
+    return pb_out;
+  }
+
+ private:
+  apriltag_family_t* tag_family_;
+  apriltag_detector_t* tag_detector_;
+};
+
 class TrackingCameraClient {
  public:
   TrackingCameraClient(boost::asio::io_service& io_service)
       : io_service_(io_service), event_bus_(GetEventBus(io_service_)) {
     // TODO(ethanrublee) look up image size from realsense profile.
     std::string cmd0 =
-        std::string("appsrc !") +
-        " videoconvert ! " +
-      //" x264enc bitrate=600 speed-preset=ultrafast tune=zerolatency key-int-max=15 ! video/x-h264,profile=constrained-baseline ! queue max-size-time=100000000 ! h264parse ! "
+        std::string("appsrc !") + " videoconvert ! " +
+        //" x264enc bitrate=600 speed-preset=ultrafast tune=zerolatency
+        // key-int-max=15 ! video/x-h264,profile=constrained-baseline ! queue
+        // max-size-time=100000000 ! h264parse ! "
         " omxh264enc control-rate=1 bitrate=1000000 ! " +
         " video/x-h264, stream-format=byte-stream !" +
         " rtph264pay pt=96 mtu=1400 config-interval=10 !" +
-        " udpsink host=239.20.20.20 auto-multicast=true  port=5000";
+        " udpsink host=239.20.20.20 auto-multicast=true port=5000";
     std::cerr << "Running gstreamer with pipeline:\n" << cmd0 << std::endl;
     std::cerr << "To view streamer run:\n"
               << "gst-launch-1.0 udpsrc multicast-group=239.20.20.20 port=5000 "
@@ -152,6 +240,21 @@ class TrackingCameraClient {
     cfg.enable_stream(RS2_STREAM_FISHEYE, 1, RS2_FORMAT_Y8);
     cfg.enable_stream(RS2_STREAM_FISHEYE, 2, RS2_FORMAT_Y8);
 
+    auto profile = cfg.resolve(pipe_);
+    auto tm2 = profile.get_device().as<rs2::tm2>();
+    auto pose_sensor = tm2.first<rs2::pose_sensor>();
+
+    // setting options for slam:
+    // https://github.com/IntelRealSense/librealsense/issues/1011
+    // and what to set:
+    //  https://github.com/IntelRealSense/realsense-ros/issues/779 "
+    // I would suggest leaving mapping enabled, but disabling
+    // relocalization and jumping. This may avoid the conflict with
+    // RTabMap while still giving good results."
+
+    pose_sensor.set_option(RS2_OPTION_ENABLE_POSE_JUMPING, 0);
+    pose_sensor.set_option(RS2_OPTION_ENABLE_RELOCALIZATION, 0);
+
     // Start pipeline with chosen configuration
     pipe_.start(cfg, std::bind(&TrackingCameraClient::frame_callback, this,
                                std::placeholders::_1));
@@ -163,11 +266,40 @@ class TrackingCameraClient {
   void frame_callback(const rs2::frame& frame) {
     if (rs2::frameset fs = frame.as<rs2::frameset>()) {
       rs2::video_frame fisheye_frame = fs.get_fisheye_frame(0);
+      // Add a reference to fisheye_frame, cause we're scheduling
+      // april tag detection for later.
+      fisheye_frame.keep();
       cv::Mat frame_0 = frame_to_mat(fisheye_frame);
-      std::lock_guard<std::mutex> lock(mtx_);
+
+      // lock for rest of scope, so we can edit some member state.
+      std::lock_guard<std::mutex> lock(mtx_realsense_state_);
       count_ = (count_ + 1) % 3;
       if (count_ == 0) {
         writer_->write(frame_0);
+        // we only want to schedule detection if we're not currently
+        // detecting.  Apriltag detection takes >30ms on the nano.
+        if (!detection_in_progress_) {
+          detection_in_progress_ = true;
+          auto stamp =
+              google::protobuf::util::TimeUtil::MillisecondsToTimestamp(
+                  fisheye_frame.get_timestamp());
+
+          // schedule april tag detection, do it as frequently as possible.
+          io_service_.post([this, fisheye_frame, stamp] {
+            // note this function is called later, in main thread, via
+            // io_service_.run();
+            cv::Mat frame_0 = frame_to_mat(fisheye_frame);
+            Event event = farm_ng::MakeEvent("tracking_camera/front/apriltags",
+                                             detector_.Detect(frame_0));
+            *event.mutable_stamp() = stamp;
+
+            event_bus_.Send(event);
+            // signal that we're done detecting, so can post another frame for
+            // detection.
+            std::lock_guard<std::mutex> lock(mtx_realsense_state_);
+            detection_in_progress_ = false;
+          });
+        }
       }
     } else if (rs2::pose_frame pose_frame = frame.as<rs2::pose_frame>()) {
       auto pose_data = pose_frame.get_pose_data();
@@ -186,12 +318,18 @@ class TrackingCameraClient {
   std::unique_ptr<cv::VideoWriter> writer_;
   // Declare RealSense pipeline, encapsulating the actual device and sensors
   rs2::pipeline pipe_;
-  std::mutex mtx_;
+  std::mutex mtx_realsense_state_;
   int count_ = 0;
+  bool detection_in_progress_ = false;
+  ApriltagDetector detector_;
 };
 }  // namespace farm_ng
 
 int main(int argc, char* argv[]) try {
+  // Initialize Google's logging library.
+  FLAGS_logtostderr = 1;
+  google::InitGoogleLogging(argv[0]);
+
   // Declare RealSense pipeline, encapsulating the actual device and sensors
   rs2::pipeline pipe;
   boost::asio::io_service io_service;
