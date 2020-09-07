@@ -31,6 +31,7 @@ apt-get install -y \
      librealsense2-dev \
      librealsense2-utils \
      libsuitesparse-dev \
+     network-manager \
      protobuf-compiler \
      python3-pip
 
