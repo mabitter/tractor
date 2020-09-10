@@ -10,8 +10,15 @@ done
 export SERVICE_DIR=$( cd "$( dirname "${SOURCE}" )" >/dev/null 2>&1 && pwd )
 
 # add some routes for wlan0, lo
-route add -net 224.0.0.0 netmask 240.0.0.0 dev lo
-route add -net 224.0.0.0 netmask 240.0.0.0 dev wlan0
+EXIST=`ip route show 224.0.0.0/4  | wc -l`
+if [ $EXIST -eq 0 ]
+then
+    route add -net 224.0.0.0 netmask 240.0.0.0 dev lo
+fi
+if [ $EXIST -eq 1 ]
+then
+    route add -net 224.0.0.0 netmask 240.0.0.0 dev wlan0
+fi
 
 
 # enable multicast on loopback, cause we may not have a wireless or wired link.

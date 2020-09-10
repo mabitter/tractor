@@ -12,6 +12,7 @@ from farm_ng_proto.tractor.v1.io_pb2 import Announce
 from farm_ng_proto.tractor.v1.io_pb2 import Event
 from google.protobuf.text_format import MessageToString
 from google.protobuf.timestamp_pb2 import Timestamp
+
 # loads all the protos for pretty print of any
 
 logger = logging.getLogger('ipc')
@@ -56,7 +57,7 @@ class EventBusQueue:
 class EventBus:
     def __init__(self, name, recv_raw=False):
         if name is None:
-            name = 'service'
+            name = 'python-ipc'
         # forward raw packets, don't track state
         self._recv_raw = recv_raw
         self._multicast_group = _g_multicast_group
@@ -249,7 +250,7 @@ def make_event(name: str, message, stamp: Timestamp = None) -> Event:
 def main():
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     event_loop = asyncio.get_event_loop()
-    event_bus = get_event_bus('ipc')
+    event_bus = get_event_bus('python-ipc')
     _ = Periodic(1, event_loop, lambda n_periods: event_bus.log_state())
 
     event_loop.run_forever()

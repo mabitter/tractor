@@ -15,7 +15,7 @@ func prettyPrint(i interface{}) string {
 }
 
 func main() {
-	b := eventbus.NewEventBus(net.UDPAddr{IP: net.ParseIP("239.20.20.21"), Port: 10000}, nil)
+	b := eventbus.NewEventBus(net.UDPAddr{IP: net.ParseIP("239.20.20.21"), Port: 10000}, "go-eventbus", nil, false)
 
 	stateTicker := time.NewTicker(1 * time.Second)
 	announcementsTicker := time.NewTicker(10 * time.Second)

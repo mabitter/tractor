@@ -18,29 +18,33 @@ import (
 
 const (
 	maxDatagramSize = 1024
-	serviceName     = "go-ipc"
 )
 
 type EventBus struct {
-	multicastGroup     net.UDPAddr
-	Announcements      map[string]*pb.Announce
-	announcementsMutex *sync.Mutex
-	State              map[string]*pb.Event
-	eventChan          chan<- *pb.Event
-	receiveConn        *net.UDPConn
-	sendConn           *net.UDPConn
+	multicastGroup       net.UDPAddr
+	serviceName          string
+	Announcements        map[string]*pb.Announce
+	announcementsMutex   *sync.Mutex
+	State                map[string]*pb.Event
+	eventChan            chan<- *pb.Event
+	publishAnnouncements bool
+	receiveConn          *net.UDPConn
+	sendConn             *net.UDPConn
 }
 
 // NewEventBus returns a new EventBus.
 //
 // A channel may be provided for event callbacks. This channel must be serviced, or the bus will hang.
-func NewEventBus(multicastGroup net.UDPAddr, eventChan chan<- *pb.Event) *EventBus {
+// If a channel is provided and `publishAnnouncement` is true, the channel will receive announcement events too.
+func NewEventBus(multicastGroup net.UDPAddr, serviceName string, eventChan chan<- *pb.Event, publishAnnouncements bool) *EventBus {
 	return &EventBus{
-		multicastGroup:     multicastGroup,
-		Announcements:      make(map[string]*pb.Announce),
-		announcementsMutex: &sync.Mutex{},
-		State:              make(map[string]*pb.Event),
-		eventChan:          eventChan,
+		multicastGroup:       multicastGroup,
+		serviceName:          serviceName,
+		Announcements:        make(map[string]*pb.Announce),
+		announcementsMutex:   &sync.Mutex{},
+		State:                make(map[string]*pb.Event),
+		eventChan:            eventChan,
+		publishAnnouncements: publishAnnouncements,
 	}
 }
 
@@ -129,7 +133,7 @@ func (bus *EventBus) announce() {
 	announce := &pb.Announce{
 		Host:    host,
 		Port:    int32(bus.sendConn.LocalAddr().(*net.UDPAddr).Port),
-		Service: serviceName,
+		Service: bus.serviceName,
 		Stamp:   ptypes.TimestampNow(),
 	}
 	announceBytes, err := proto.Marshal(announce)
@@ -198,6 +202,18 @@ func (bus *EventBus) handleAnnouncements() {
 		bus.announcementsMutex.Lock()
 		bus.Announcements[src.String()] = announce
 		bus.announcementsMutex.Unlock()
+
+		if bus.eventChan != nil && bus.publishAnnouncements {
+			event := &pb.Event{}
+			event.RecvStamp = announce.RecvStamp
+			event.Stamp = announce.Stamp
+			event.Name = "ipc/announcement/" + announce.Service
+			event.Data, err = ptypes.MarshalAny(announce)
+			if err != nil {
+				log.Fatalln("marshalling announcement to Any failed: ", err, announce)
+			}
+			bus.eventChan <- event
+		}
 	}
 }
 

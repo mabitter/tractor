@@ -19,7 +19,7 @@ namespace farm_ng {
 class ExtrinsicCalibrator {
  public:
   ExtrinsicCalibrator(boost::asio::io_service& io_service)
-      : bus_(GetEventBus(io_service)), timer_(io_service) {
+      : bus_(GetEventBus(io_service, "extrinsic-calibrator")), timer_(io_service) {
     bus_.GetEventSignal()->connect(
         std::bind(&ExtrinsicCalibrator::on_event, this, std::placeholders::_1));
     on_timer(boost::system::error_code());

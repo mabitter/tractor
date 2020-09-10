@@ -147,7 +147,7 @@ class EventBusImpl {
     farm_ng_proto::tractor::v1::Announce announce;
     announce.set_host(endpoint.address().to_string());
     announce.set_port(endpoint.port());
-    announce.set_service("cpp-ipc");
+    announce.set_service(service_name_);
 
     *announce.mutable_stamp() = MakeTimestampNow();
     announce.SerializeToString(&announce_message_);
@@ -188,6 +188,10 @@ class EventBusImpl {
       socket_.send_to(boost::asio::buffer(event_message_), ep);
     }
   }
+
+  void set_name(const std::string& name) {
+    service_name_ = name;
+  }
   boost::asio::io_service& io_service_;
 
   receiver recv_;
@@ -202,6 +206,7 @@ class EventBusImpl {
   char data_[max_length];
   std::string announce_message_;
   std::string event_message_;
+  std::string service_name_ = "unknown [cpp-ipc]";
 
  public:
   std::map<std::string, farm_ng_proto::tractor::v1::Event> state_;
@@ -233,6 +238,9 @@ EventBus::GetAnnouncements() const {
 }
 void EventBus::Send(const farm_ng_proto::tractor::v1::Event& event) {
   impl_->io_service_.post([this, event]() { impl_->send_event(event); });
+}
+void EventBus::SetName(const std::string& name) {
+  impl_->set_name(name);
 }
 google::protobuf::Timestamp MakeTimestampNow() {
   return MakeTimestamp(std::chrono::system_clock::now());

@@ -7,7 +7,11 @@ namespace farm_ng {
 class EventLogReaderImpl {
  public:
   EventLogReaderImpl(std::string log_path)
-      : log_path_(log_path), in_(log_path_, std::ofstream::binary) {}
+      : log_path_(log_path), in_(log_path_, std::ofstream::binary) {
+    if(!in_) {
+      throw std::runtime_error("Could not open file");
+    }
+  }
 
   farm_ng_proto::tractor::v1::Event ReadNext() {
     uint16_t n_bytes;
@@ -31,6 +35,10 @@ class EventLogReaderImpl {
 EventLogReader::EventLogReader(std::string log_path)
     : impl_(new EventLogReaderImpl(log_path)) {}
 EventLogReader::~EventLogReader() { impl_.reset(nullptr); }
+
+void EventLogReader::Reset(std::string log_path) {
+  impl_.reset(new EventLogReaderImpl(log_path));
+}
 
 farm_ng_proto::tractor::v1::Event EventLogReader::ReadNext() {
   return impl_->ReadNext();

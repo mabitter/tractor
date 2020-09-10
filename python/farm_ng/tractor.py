@@ -32,7 +32,7 @@ class TractorController:
         self.angular = 0.0
         # self.record_counter = 0
         # self.recording = False
-        self.event_bus = get_event_bus()
+        self.event_bus = get_event_bus('farm_ng.tractor')
         self.lock_out = False
         self.can_socket = CANSocket('can0', self.event_loop)
         self.steering = SteeringClient()

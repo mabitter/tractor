@@ -12,6 +12,8 @@ class EventLogReader {
   EventLogReader(std::string log_path);
   ~EventLogReader();
 
+  void Reset(std::string log_path);
+
   farm_ng_proto::tractor::v1::Event ReadNext();
 
  private:

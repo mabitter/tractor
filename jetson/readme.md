@@ -25,6 +25,9 @@ This installs the following services:
 - tractor.service - Responsible for talking to the motors, and
   receiving steering commands to drive the tractor arround.
 
+- tractor-webservices.service - Responsible for proxying ipc traffic over webRTC,
+  serving a Twirp API, and serving the static frontend.
+
 The install script enables these services so that they start at boot.
 
 To see their log output:
@@ -33,9 +36,21 @@ To see their log output:
 journalctl -f -u tractor
 journalctl -f -u tractor-bringup
 journalctl -f -u tractor-steering
+journalctl -f -u tractor-webservices
 ```
 
 Or `tail -f /var/log/syslog` ...
+
+## Debugging
+
+```
+systemd-analyze plot > bootup.svg
+systemd-analyze dot --from-pattern='tractor*.service' | dot -Tsvg > graph.svg
+systemd-analyze verify multi-user.target (look for anything tractor related)
+systemctl list-unit-files
+systemctl show -p Requires,Wants,Requisite,BindsTo,PartOf,Before,After <name>.service
+
+```
 
 ## Wifi Configuration
 
@@ -49,6 +64,7 @@ Or `tail -f /var/log/syslog` ...
 - The tractor is reachable at `192.168.48.1`.
 
 ### Change the tractor's access point password
+
 - Run `python -m farm_ng.wifi list`
 - Run `python -m farm_ng.wifi delete <id>` with the `farm_ng-<tractorhostname>` id from the previous step
 - Run `python -m farm_ng.wifi ap`

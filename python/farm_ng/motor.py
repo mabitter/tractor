@@ -188,7 +188,7 @@ class HubMotor:
 
             # only log on the 5th vesc message, as we have complete state at that point.
             event = make_event('%s/state' % self.name, self._latest_state, stamp=self._latest_stamp)
-            get_event_bus('motor').send(event)
+            get_event_bus(self.name).send(event)
 
     def _send_can_command(self, command, data):
         cob_id = int(self.can_node_id) | (command << 8)

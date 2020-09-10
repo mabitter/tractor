@@ -3,10 +3,10 @@ import * as React from "react";
 import { useLoader, ReactThreeFiber } from "react-three-fiber";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import { Quaternion, Vector3, Color } from "three";
+import tractorSTL from "./static/stl/tractor.v0.stl";
 
 export const Tractor: React.FC = () => {
-  // TODO: Should this be bundled?
-  const stl = useLoader(STLLoader, "./stl/tractor.v0.stl");
+  const stl = useLoader(STLLoader, tractorSTL);
 
   const [position, setPosition] = useState<ReactThreeFiber.Vector3>(
     new Vector3()

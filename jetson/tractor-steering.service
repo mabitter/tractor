@@ -2,7 +2,7 @@
 Description=tractor steering service
 Requires=bluetooth.service
 After=bluetooth.service tractor-bringup.service
-Wants=tractor-bringup
+Wants=tractor-bringup.service
 
 [Service]
 ExecStart=/home/farmer/tractor/jetson/steering.sh

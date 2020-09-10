@@ -1,0 +1,13 @@
+[Unit]
+Description=farm-ng web services
+After=network.target tractor-bringup.service
+
+[Service]
+ExecStart=/home/farmer/tractor/jetson/webservices.sh
+WorkingDirectory=/home/farmer/tractor
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -28,7 +28,7 @@ class SteeringClient:
         self.lockout = True
 
     def get_steering_command(self):
-        event = get_event_bus('steering').get_last_event(_g_message_name)
+        event = get_event_bus('farm_ng.steering').get_last_event(_g_message_name)
         if event is None:
             self.lockout = True
             return self._stop_command

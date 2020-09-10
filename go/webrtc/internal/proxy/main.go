@@ -1,6 +1,10 @@
 package proxy
 
+// TODO: Clean up logging
+// TODO: Support graceful shutdown
+
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -9,126 +13,227 @@ import (
 
 	pb "github.com/farm-ng/tractor/genproto"
 	"github.com/farm-ng/tractor/webrtc/internal/eventbus"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func uniqueId() int64 {
+func uniqueID() int64 {
 	return time.Now().UnixNano() / 1e6
 }
 
-const maxRtpDatagramSize = 4096
-
-type eventCallback func([]byte) error
 type rtpCallback func(*rtp.Packet) error
 
-// Proxy is a webRTC proxy that proxies EventBus events to/from a webRTC data channel and
-// RTP packets to a webRTC video channel.
-type Proxy struct {
-	eventBus            *eventbus.EventBus
-	eventSource         chan *pb.Event
-	eventCallbacks      map[string]eventCallback
-	eventCallbacksMutex *sync.Mutex
-	ssrc                uint32
-	rtpListener         *net.UDPConn
-	rtpCallbacks        map[string]rtpCallback
-	rtpCallbacksMutex   *sync.Mutex
+// RtpProxy proxies RTP traffic to registered callbacks
+type RtpProxy struct {
+	config         RtpProxyConfig
+	callbacks      map[string]rtpCallback
+	callbacksMutex *sync.Mutex
+	SSRC           uint32
 }
 
-func NewProxy(eventBus *eventbus.EventBus, eventSource chan *pb.Event, ssrc uint32, rtpListener *net.UDPConn) *Proxy {
-	return &Proxy{
-		eventBus:            eventBus,
-		eventSource:         eventSource,
-		eventCallbacks:      make(map[string]eventCallback),
-		eventCallbacksMutex: &sync.Mutex{},
-		ssrc:                ssrc,
-		rtpListener:         rtpListener,
-		rtpCallbacks:        make(map[string]rtpCallback),
-		rtpCallbacksMutex:   &sync.Mutex{},
+// RtpProxyConfig configures an RtpProxy
+type RtpProxyConfig struct {
+	ListenAddr      string
+	ReadBufferSize  int
+	MaxDatagramSize int
+}
+
+// NewRtpProxy constructs an RtpProxy
+func NewRtpProxy(config *RtpProxyConfig) *RtpProxy {
+	return &RtpProxy{
+		config:         *config,
+		callbacks:      make(map[string]rtpCallback),
+		callbacksMutex: &sync.Mutex{},
 	}
 }
 
-// Start begins reading continously from the EventBus and RTP stream
-func (p *Proxy) Start() {
-	// Continuously read from the event bus and publish to all registered event callbacks
-	go func() {
-		for {
-			select {
-			case e := <-p.eventSource:
-				eventBytes, err := proto.Marshal(e)
-				if err != nil {
-					log.Println("Could not marshal event: ", e)
-					continue
-				}
-				p.eventCallbacksMutex.Lock()
-				for id, cb := range p.eventCallbacks {
-					err := cb(eventBytes)
-					if err != nil {
-						log.Printf("Ending eventbus->datachannel forwarding [%s]\n", id)
-						delete(p.eventCallbacks, id)
-					}
-				}
-				p.eventCallbacksMutex.Unlock()
-			}
-		}
-	}()
+func (p *RtpProxy) start() error {
+	// Open a UDP Listener for RTP Packets
+	resolvedListenAddr, err := net.ResolveUDPAddr("udp", p.config.ListenAddr)
+	if err != nil {
+		return err
+	}
+	listener, err := net.ListenMulticastUDP("udp", nil, resolvedListenAddr)
+	if err != nil {
+		return err
+	}
+	listener.SetReadBuffer(p.config.ReadBufferSize)
+	log.Println("Waiting for RTP Packets at: ", p.config.ListenAddr)
 
-	// Continuously read from the RTP stream and publish to all registered RTP callbacks
-	inboundRTPPacket := make([]byte, maxRtpDatagramSize)
-	go func() {
-		for {
-			n, _, err := p.rtpListener.ReadFrom(inboundRTPPacket)
+	// Listen for a single RTP Packet, we need this to determine the SSRC
+	inboundRTPPacket := make([]byte, p.config.MaxDatagramSize)
+	n, _, err := listener.ReadFromUDP(inboundRTPPacket)
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal the incoming packet
+	packet := &rtp.Packet{}
+	if err = packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
+		return err
+	}
+	p.SSRC = packet.SSRC
+	log.Println("RTP packet received. Starting RTP proxy")
+
+	// Continuously read from the RTP stream and publish to all registered callbacks
+	for {
+		n, _, err := listener.ReadFrom(inboundRTPPacket)
+		if err != nil {
+			log.Println("RTP proxy error during read: ", err)
+			continue
+		}
+
+		packet := &rtp.Packet{}
+		if err := packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
+			log.Println("RTP proxy error during unmarshal: ", err)
+			continue
+		}
+
+		p.callbacksMutex.Lock()
+		for id, cb := range p.callbacks {
+			err := cb(packet)
 			if err != nil {
-				log.Printf("error during read: %s", err)
-				panic(err)
+				log.Printf("[%s] Error proxying RTP: %s \n", id, err)
+				p.unregisterCallbackThreadUnsafe(id)
 			}
+		}
+		p.callbacksMutex.Unlock()
+	}
+}
 
-			packet := &rtp.Packet{}
-			if err := packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
-				panic(err)
+func (p *RtpProxy) registerCallback(id string, cb rtpCallback) {
+	p.callbacksMutex.Lock()
+	p.registerCallbackThreadUnsafe(id, cb)
+	p.callbacksMutex.Unlock()
+}
+
+func (p *RtpProxy) registerCallbackThreadUnsafe(id string, cb rtpCallback) {
+	log.Printf("[%s] Registering RTP callback \n", id)
+	p.callbacks[id] = cb
+}
+
+func (p *RtpProxy) unregisterCallback(id string) {
+	p.callbacksMutex.Lock()
+	p.unregisterCallbackThreadUnsafe(id)
+	p.callbacksMutex.Unlock()
+}
+
+func (p *RtpProxy) unregisterCallbackThreadUnsafe(id string) {
+	log.Printf("[%s] Unregistering RTP callback \n", id)
+	delete(p.callbacks, id)
+}
+
+type eventCallback func([]byte) error
+
+// EventBusProxy proxies EventBus traffic to registered callbacks
+type EventBusProxy struct {
+	config         EventBusProxyConfig
+	callbacks      map[string]eventCallback
+	callbacksMutex *sync.Mutex
+}
+
+// EventBusProxyConfig configures an EventBusProxy
+type EventBusProxyConfig struct {
+	EventBus    *eventbus.EventBus
+	EventSource chan *pb.Event
+}
+
+// NewEventBusProxy constructs an EventBusProxy
+func NewEventBusProxy(config *EventBusProxyConfig) *EventBusProxy {
+	return &EventBusProxy{
+		config:         *config,
+		callbacks:      make(map[string]eventCallback),
+		callbacksMutex: &sync.Mutex{},
+	}
+}
+
+func (p *EventBusProxy) registerCallback(id string, cb eventCallback) {
+	p.callbacksMutex.Lock()
+	p.registerCallbackThreadUnsafe(id, cb)
+	p.callbacksMutex.Unlock()
+}
+
+func (p *EventBusProxy) registerCallbackThreadUnsafe(id string, cb eventCallback) {
+	log.Printf("[%s] Registering EventBus callback \n", id)
+	p.callbacks[id] = cb
+}
+
+func (p *EventBusProxy) unregisterCallback(id string) {
+	p.callbacksMutex.Lock()
+	p.unregisterCallbackThreadUnsafe(id)
+	p.callbacksMutex.Unlock()
+}
+
+func (p *EventBusProxy) unregisterCallbackThreadUnsafe(id string) {
+	log.Printf("[%s] Unregistering EventBus callback \n", id)
+	delete(p.callbacks, id)
+}
+
+func (p *EventBusProxy) start() {
+	go p.config.EventBus.Start()
+
+	// Continuously read from the event bus and publish to all registered event callbacks
+	for {
+		select {
+		case e := <-p.config.EventSource:
+			eventBytes, err := proto.Marshal(e)
+			if err != nil {
+				log.Println("Could not marshal event: ", e)
+				continue
 			}
-
-			p.rtpCallbacksMutex.Lock()
-			for id, cb := range p.rtpCallbacks {
-				err := cb(packet)
+			p.callbacksMutex.Lock()
+			for id, cb := range p.callbacks {
+				err := cb(eventBytes)
 				if err != nil {
-					log.Printf("Ending rtp->videoTrack forwarding [%s]\n", id)
-					delete(p.rtpCallbacks, id)
+					log.Printf("[%s] Error proxying eventbus->datachannel: %s \n", id, err)
+					p.unregisterCallbackThreadUnsafe(id)
 				}
 			}
-			p.rtpCallbacksMutex.Unlock()
+			p.callbacksMutex.Unlock()
 		}
-	}()
+	}
 }
 
-func (p *Proxy) registerEventCallback(id string, cb eventCallback) {
-	p.eventCallbacksMutex.Lock()
-	p.eventCallbacks[id] = cb
-	p.eventCallbacksMutex.Unlock()
+func (p *EventBusProxy) sendEvent(e *pb.Event) {
+	p.config.EventBus.SendEvent(e)
 }
 
-func (p *Proxy) registerRTPCallback(id string, cb rtpCallback) {
-	p.rtpCallbacksMutex.Lock()
-	p.rtpCallbacks[id] = cb
-	p.rtpCallbacksMutex.Unlock()
+// Proxy proxies EventBus events to/from a webRTC data channel and RTP packets to a webRTC video channel.
+type Proxy struct {
+	eventBusProxy *EventBusProxy
+	rtpProxy      *RtpProxy
+}
+
+// NewProxy constructs a Proxy
+func NewProxy(eventBusProxy *EventBusProxy, rtpProxy *RtpProxy) *Proxy {
+	return &Proxy{
+		eventBusProxy: eventBusProxy,
+		rtpProxy:      rtpProxy,
+	}
+}
+
+// Start begins reading / writing continously from / to the EventBus and RTP stream
+func (p *Proxy) Start() {
+	// TODO: Use the errgroup pattern (https://stackoverflow.com/a/55122595) to break if either errors
+	go p.eventBusProxy.start()
+	go p.rtpProxy.start()
 }
 
 // AddPeer accepts an offer SDP from a peer, registers callbacks for RTP and EventBus events, and returns an
 // answer SDP.
-// TODO: Return errors rather than panic
-// TODO: Clean up logging
-// TODO: Support graceful shutdown
-func (p *Proxy) AddPeer(offer webrtc.SessionDescription) webrtc.SessionDescription {
-	peerId := fmt.Sprint(uniqueId())
-	log.Printf("New peer [%s]\n", peerId)
+func (p *Proxy) AddPeer(offer webrtc.SessionDescription) (*webrtc.SessionDescription, error) {
+	peerID := fmt.Sprint(uniqueID())
+	log.Printf("[%s] Added as new peer\n", peerID)
 
 	// We make our own mediaEngine so we can place the offerer's codecs in it.  This because we must use the
 	// dynamic media type from the offerer in our answer. This is not required if we are the offerer
 	mediaEngine := webrtc.MediaEngine{}
 	err := mediaEngine.PopulateFromSDP(offer)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Search for H264 Payload type. If the offer doesn't support H264, exit,
@@ -141,7 +246,7 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) webrtc.SessionDescripti
 		}
 	}
 	if payloadType == 0 {
-		panic("Remote peer does not support H264")
+		return nil, errors.New("remote peer does not support H264")
 	}
 
 	// Create a SettingEngine and enable Detach.
@@ -159,103 +264,140 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) webrtc.SessionDescripti
 	// Create a new RTCPeerConnection
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine), webrtc.WithMediaEngine(mediaEngine))
 	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
-		// No STUN servers for now, to ensure candidate pair that's selected operates solely over LAN
-		ICEServers: []webrtc.ICEServer{
-			// {
-			// 	URLs: []string{"stun:stun.l.google.com:19302"},
-			// },
-		},
+		// No STUN servers for now, to ensure candidate pair that's selected communicates over LAN
+		ICEServers: []webrtc.ICEServer{},
 	})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Create a video track, using the payloadType of the offer and the SSRC of the RTP stream
-	videoTrack, err := peerConnection.NewTrack(payloadType, p.ssrc, "video", "pion")
+	ssrc := p.rtpProxy.SSRC
+	if ssrc == 0 {
+		log.Printf("[%s] RTP Proxy has not received any packets yet, using random value as the SSRC", peerID)
+		ssrc = uint32(uniqueID())
+	}
+	videoTrack, err := peerConnection.NewTrack(payloadType, ssrc, "video", "pion")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	if _, err = peerConnection.AddTrack(videoTrack); err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	// Register a new consumer with the RTP stream and service the received packets
+	// Service received RTP packets
 	cb := func(packet *rtp.Packet) error {
 		packet.Header.PayloadType = payloadType
-		err := videoTrack.WriteRTP(packet)
-		if err != nil {
-			log.Println("Could not write packet to videoTrack: ", err)
-		}
-		return err
+		return videoTrack.WriteRTP(packet)
 	}
-	p.registerRTPCallback(peerId, cb)
+	p.rtpProxy.registerCallback(peerID, cb)
 
-	// Register data channel creation handling
+	// Handle data channel creation
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		log.Printf("New DataChannel %s %d\n", d.Label(), d.ID())
+		log.Printf("[%s] New DataChannel %s %d\n", peerID, d.Label(), d.ID())
 
-		// Register channel opening handling
 		d.OnOpen(func() {
-			log.Printf("Data channel '%s'-'%d' open.\n", d.Label(), d.ID())
+			log.Printf("[%s] Data channel '%s'-'%d' open\n", peerID, d.Label(), d.ID())
 
 			// Detach the data channel
 			raw, dErr := d.Detach()
 			if dErr != nil {
-				panic(dErr)
+				log.Printf("[%s] Could not detach data channel: %s\n", peerID, err)
+				return
 			}
 
-			// datachannel -> eventbus
+			// Service received data channel events, forwarding them to the event bus
 			const messageSize = 1024
 			go func() {
-				log.Printf("Starting datachannel->eventbus forwarding [%s]\n", peerId)
+				log.Printf("[%s] Starting datachannel->eventbus forwarding\n", peerID)
 				for {
 					buffer := make([]byte, messageSize)
 					n, err := raw.Read(buffer)
 					if err != nil {
-						log.Println("Datachannel closed:", err)
+						log.Printf("[%s] Datachannel closed: %s\n", peerID, err)
 						break
 					}
 
 					event := &pb.Event{}
 					err = proto.Unmarshal(buffer[:n], event)
 					if err != nil {
-						log.Println("Received invalid event on the data channel:", err)
+						log.Printf("[%s] Received invalid event on the data channel: %s\n", peerID, err)
 						continue
 					}
-
-					p.eventBus.SendEvent(event)
+					p.eventBusProxy.sendEvent(event)
 				}
-				log.Println("Ending datachannel->eventbus forwarding.")
+				log.Printf("[%s] Ending datachannel->eventbus forwarding", peerID)
+
+				// This is the most reliable signal I've been able to find so far that a peer
+				// has disappeared. End RTP forwarding as well.
+				log.Printf("[%s] Ending rtp->videostream forwarding", peerID)
+				p.rtpProxy.unregisterCallback(peerID)
 			}()
 
-			// eventbus -> datachannel
+			// Service received EventBus events, forwarding them to the data channel
 			cb := func(eventBytes []byte) error {
 				_, err = raw.Write(eventBytes)
-				if err != nil {
-					log.Println("Could not write event to datachannel : ", err)
-				}
 				return err
 			}
-			log.Printf("Starting eventbus->datachannel forwarding [%s]\n", peerId)
-			p.registerEventCallback(peerId, cb)
+			log.Printf("[%s] Starting eventbus->datachannel forwarding\n", peerID)
+			p.eventBusProxy.registerCallback(peerID, cb)
+
+			// Immediately announce ourselves to fill the data channel's write buffers
+			announceSelf := func(t *timestamppb.Timestamp) error {
+				event := &pb.Event{}
+				event.RecvStamp = t
+				event.Stamp = t
+				event.Name = "ipc/announcement/webrtc-proxy"
+				event.Data, err = ptypes.MarshalAny(&pb.Announce{
+					Service: "webrtc-proxy",
+					Stamp:   t,
+				})
+
+				eventBytes, err := proto.Marshal(event)
+				_, err = raw.Write(eventBytes)
+				return err
+			}
+			for i := 0; i < 100; i++ {
+				err := announceSelf(ptypes.TimestampNow())
+				if err != nil {
+					break
+				}
+			}
+
+			// And continue announcing periodically
+			t := time.NewTicker(1 * time.Second)
+			go func() {
+				for {
+					select {
+					case <-t.C:
+						err := announceSelf(ptypes.TimestampNow())
+						if err != nil {
+							return
+						}
+					}
+				}
+			}()
 		})
 	})
 
-	// Set the handler for ICE connection state
-	// This will notify you when the peer has connected/disconnected
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		log.Printf("Connection State has changed %s \n", connectionState.String())
+	// Handle notifications that peer has connected/disconnected
+	peerConnection.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		log.Printf("[%s] Connection State has changed %s \n", peerID, s.String())
+		if s == webrtc.ICEConnectionStateClosed {
+			p.eventBusProxy.unregisterCallback(peerID)
+			p.rtpProxy.unregisterCallback(peerID)
+		}
 	})
 
 	// Set the remote SessionDescription
 	if err = peerConnection.SetRemoteDescription(offer); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Create answer
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Create channel that is blocked until ICE Gathering is complete
@@ -263,7 +405,7 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) webrtc.SessionDescripti
 
 	// Set the LocalDescription
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Block until ICE Gathering is complete, disabling trickle ICE
@@ -271,5 +413,5 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) webrtc.SessionDescripti
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
 
-	return *peerConnection.LocalDescription()
+	return peerConnection.LocalDescription(), nil
 }

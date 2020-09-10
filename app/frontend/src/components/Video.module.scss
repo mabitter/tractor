@@ -1,0 +1,43 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  background-color: black;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+.annotatedVideoContainer {
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.annotatedVideo {
+  height: 100%;
+  position: relative;
+}
+
+.video {
+  max-height: 100%;
+  max-width: 100%;
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}

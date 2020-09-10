@@ -18,6 +18,7 @@ find_package(realsense2 REQUIRED)
 find_package(apriltag REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Glog REQUIRED)
+find_package(gflags REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(Sophus REQUIRED)
 

@@ -204,7 +204,7 @@ class ApriltagDetector {
 class TrackingCameraClient {
  public:
   TrackingCameraClient(boost::asio::io_service& io_service)
-      : io_service_(io_service), event_bus_(GetEventBus(io_service_)) {
+      : io_service_(io_service), event_bus_(GetEventBus(io_service_, "tracking-camera")) {
     // TODO(ethanrublee) look up image size from realsense profile.
     std::string cmd0 =
         std::string("appsrc !") + " videoconvert ! " +

@@ -1,0 +1,1 @@
+KERNEL=="usb[1-2]", TAG+="systemd"

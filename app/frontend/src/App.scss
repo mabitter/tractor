@@ -1,0 +1,21 @@
+@import "theme";
+
+* {
+  box-sizing: border-box;
+}
+
+body,
+html {
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+// uncomment for visual debugging
+// * {
+//   background: #000 !important;
+//   color: #0f0 !important;
+//   outline: solid #f00 1px !important;
+// }

@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
 import * as React from "react";
 import { Quaternion, Vector3 } from "three";
-import { ipcClient } from "../config";
-
+import { Event as BusAnyEvent } from "../../genproto/farm_ng_proto/tractor/v1/io";
 import {
   NamedSE3Pose,
   Vec3,
   Quaternion as Quat
 } from "../../genproto/farm_ng_proto/tractor/v1/geometry";
-import { Event } from "../../genproto/farm_ng_proto/tractor/v1/io";
 import { Html } from "drei";
 import { useFrame } from "react-three-fiber";
+import { decodeAnyEvent } from "../models/decodeAnyEvent";
+import { useStores } from "../hooks/useStores";
 
 function ToVector3(v?: Vec3): Vector3 {
   if (!v) {
@@ -85,12 +85,17 @@ export const PoseViz: React.FC = () => {
   useFrame((_state) => {
     setRootNode({ ...root });
   });
+
+  const { busEventStore } = useStores();
+  const busEventEmitter = busEventStore.transport;
+
   useEffect(() => {
-    ipcClient.on(
+    busEventEmitter.on(
       "type.googleapis.com/farm_ng_proto.tractor.v1.NamedSE3Pose",
-      (ev: Event) => {
-        if (!ev.data) return;
-        const pose = NamedSE3Pose.decode(ev.data.value);
+      (event: BusAnyEvent) => {
+        const pose = decodeAnyEvent(event) as NamedSE3Pose;
+
+        if (!pose) return;
         const poseNode = findFrameB(root, pose.frameB);
         if (poseNode && poseNode.pose.frameA == pose.frameA) {
           poseNode.pose = pose;
@@ -101,7 +106,12 @@ export const PoseViz: React.FC = () => {
         }
       }
     );
-  }, []);
+    return () => {
+      busEventEmitter.off(
+        "type.googleapis.com/farm_ng_proto.tractor.v1.NamedSE3Pose"
+      );
+    };
+  }, [busEventEmitter]);
 
   return <ReferenceFrameViz {...root} />;
 };

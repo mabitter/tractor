@@ -38,6 +38,8 @@ class EventBus : public boost::asio::io_service::service {
 
   void Send(const farm_ng_proto::tractor::v1::Event& event);
 
+  void SetName(const std::string& name);
+
  private:
   std::unique_ptr<EventBusImpl> impl_;
 };
@@ -54,8 +56,10 @@ farm_ng_proto::tractor::v1::Event MakeEvent(std::string name,
   return event;
 }
 
-inline EventBus& GetEventBus(boost::asio::io_service& io_service) {
-  return boost::asio::use_service<EventBus>(io_service);
+inline EventBus& GetEventBus(boost::asio::io_service& io_service, const std::string& service_name) {
+  auto& service = boost::asio::use_service<EventBus>(io_service);
+  service.SetName(service_name);
+  return service;
 }
 
 }  // namespace farm_ng
