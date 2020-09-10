@@ -7,6 +7,7 @@ import sys
 import linuxfd
 import numpy as np
 from farm_ng.canbus import CANSocket
+from farm_ng.config import default_config
 from farm_ng.ipc import get_event_bus
 from farm_ng.ipc import make_event
 from farm_ng_proto.tractor.v1 import motor_pb2
@@ -144,9 +145,9 @@ class HubMotor:
         self.can_socket.add_reader(self._handle_can_message)
         self._last_tachometer = 0
         self._last_tachometer_stamp = None
-        self._delta_meters = 0.0
+        self._delta_rads = 0.0
         self._delta_time_seconds = 0.0
-        self._avg_velocity = 0.0
+        self._avg_velocity_rads = 0.0
 
     def _handle_can_message(self, cob_id, data, stamp):
         can_node_id = (cob_id & 0xff)
@@ -175,9 +176,9 @@ class HubMotor:
                 # meters=revs * 2*math.pi*radius
                 # miles=meters/1609
                 # with radius of 0.215 meters, we get 1261 miles
-                self._delta_meters = self._er_to_meters(self._latest_state.tachometer.value - self._last_tachometer)
+                self._delta_rads = self._er_to_rads(self._latest_state.tachometer.value - self._last_tachometer)
                 self._delta_time_seconds = (self._latest_stamp.ToMicroseconds() - self._last_tachometer_stamp.ToMicroseconds())*1e-6
-                self._avg_velocity = self._delta_meters / self._delta_time_seconds
+                self._avg_velocity_rads = self._delta_rads / self._delta_time_seconds
 
             else:
                 self._last_tachometer_stamp = Timestamp()
@@ -197,17 +198,19 @@ class HubMotor:
         eff_flag = 0x80000000
         self.can_socket.send(cob_id, data, flags=eff_flag)
 
-    def _er_to_meters(self, er):
+    def _er_to_rads(self, er):
         '''compute meters from electric revs'''
         rotations = er/(self.poll_pairs*self.gear_ratio)
-        distance = rotations*self.wheel_radius*2*math.pi
-        return distance
+        return rotations*2*math.pi
 
     def odometry_meters(self):
         return self._er_to_meters(self._latest_state.tachometer.value)
 
     def average_velocity(self):
-        return self._avg_velocity
+        return self._avg_velocity_rads*self.wheel_radius
+
+    def average_velocity_rads(self):
+        return self._avg_velocity_rads
 
     def send_rpm_command(self, rpm):
         RPM_FORMAT = '>i'  # big endian, int32
@@ -217,6 +220,10 @@ class HubMotor:
 
     def send_velocity_command(self, velocity_m_s):
         rpm = 60*velocity_m_s/(self.wheel_radius * 2*math.pi)
+        self.send_rpm_command(rpm)
+
+    def send_velocity_command_rads(self, rads_second):
+        rpm = 60*rads_second/(2*math.pi)
         self.send_rpm_command(rpm)
 
     def send_current_command(self, current_amps):
@@ -267,11 +274,19 @@ def main():
     print(f'Listening on can0')
     loop = asyncio.get_event_loop()
 
-    radius = (17.0*0.0254)/2.0  # in meters, 17" diameter wheels
-    gear_ratio = 29.9
-    poll_pairs = 8
-    right_motor = HubMotor('right_motor', radius, gear_ratio, poll_pairs, 7, can_socket)
-    left_motor = HubMotor('left_motor', radius, gear_ratio, poll_pairs, 9, can_socket)
+    config = default_config()
+    right_motor = HubMotor(
+        'right_motor',
+        config.wheel_radius.value,
+        config.hub_motor_gear_ratio.value,
+        config.hub_motor_poll_pairs.value, 7, can_socket,
+    )
+    left_motor = HubMotor(
+        'left_motor',
+        config.wheel_radius.value,
+        config.hub_motor_gear_ratio.value,
+        config.hub_motor_poll_pairs.value, 9, can_socket,
+    )
 
     count = [0]
 
