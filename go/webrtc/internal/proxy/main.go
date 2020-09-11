@@ -20,8 +20,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func uniqueID() int64 {
-	return time.Now().UnixNano() / 1e6
+func uniqueID() uint32 {
+	return uint32(time.Now().UnixNano() / 1e6)
 }
 
 type rtpCallback func(*rtp.Packet) error
@@ -31,7 +31,9 @@ type RtpProxy struct {
 	config         RtpProxyConfig
 	callbacks      map[string]rtpCallback
 	callbacksMutex *sync.Mutex
-	SSRC           uint32
+	// Use a consistent SSRC, even if multicast RTP traffic is from changing sources
+	SSRC            uint32
+	packetsReceived uint32
 }
 
 // RtpProxyConfig configures an RtpProxy
@@ -47,6 +49,7 @@ func NewRtpProxy(config *RtpProxyConfig) *RtpProxy {
 		config:         *config,
 		callbacks:      make(map[string]rtpCallback),
 		callbacksMutex: &sync.Mutex{},
+		SSRC:           uniqueID(),
 	}
 }
 
@@ -61,24 +64,25 @@ func (p *RtpProxy) start() error {
 		return err
 	}
 	listener.SetReadBuffer(p.config.ReadBufferSize)
-	log.Println("Waiting for RTP Packets at: ", p.config.ListenAddr)
+	log.Println("RTP proxy waiting for RTP Packets at: ", p.config.ListenAddr)
 
-	// Listen for a single RTP Packet, we need this to determine the SSRC
-	inboundRTPPacket := make([]byte, p.config.MaxDatagramSize)
-	n, _, err := listener.ReadFromUDP(inboundRTPPacket)
-	if err != nil {
-		return err
-	}
-
-	// Unmarshal the incoming packet
-	packet := &rtp.Packet{}
-	if err = packet.Unmarshal(inboundRTPPacket[:n]); err != nil {
-		return err
-	}
-	p.SSRC = packet.SSRC
-	log.Println("RTP packet received. Starting RTP proxy")
+	// Periodically log our state
+	t := time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				p.callbacksMutex.Lock()
+				numCallbacks := len(p.callbacks)
+				p.callbacksMutex.Unlock()
+				log.Printf("[RtpProxy] ssrc=%d, packetsReceived/10s=%d, # callbacks=%d", p.SSRC, p.packetsReceived, numCallbacks)
+				p.packetsReceived = 0
+			}
+		}
+	}()
 
 	// Continuously read from the RTP stream and publish to all registered callbacks
+	inboundRTPPacket := make([]byte, p.config.MaxDatagramSize)
 	for {
 		n, _, err := listener.ReadFrom(inboundRTPPacket)
 		if err != nil {
@@ -91,6 +95,7 @@ func (p *RtpProxy) start() error {
 			log.Println("RTP proxy error during unmarshal: ", err)
 			continue
 		}
+		p.packetsReceived++
 
 		p.callbacksMutex.Lock()
 		for id, cb := range p.callbacks {
@@ -271,12 +276,8 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) (*webrtc.SessionDescrip
 		return nil, err
 	}
 
-	// Create a video track, using the payloadType of the offer and the SSRC of the RTP stream
+	// Create a video track, using the payloadType of the offer and the SSRC of the RTP proxy
 	ssrc := p.rtpProxy.SSRC
-	if ssrc == 0 {
-		log.Printf("[%s] RTP Proxy has not received any packets yet, using random value as the SSRC", peerID)
-		ssrc = uint32(uniqueID())
-	}
 	videoTrack, err := peerConnection.NewTrack(payloadType, ssrc, "video", "pion")
 	if err != nil {
 		return nil, err
@@ -288,6 +289,9 @@ func (p *Proxy) AddPeer(offer webrtc.SessionDescription) (*webrtc.SessionDescrip
 	// Service received RTP packets
 	cb := func(packet *rtp.Packet) error {
 		packet.Header.PayloadType = payloadType
+
+		// Rewrite the SSRC so it looks like one continuous stream to the peer
+		packet.SSRC = p.rtpProxy.SSRC
 		return videoTrack.WriteRTP(packet)
 	}
 	p.rtpProxy.registerCallback(peerID, cb)
