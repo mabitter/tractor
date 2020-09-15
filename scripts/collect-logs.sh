@@ -1,6 +1,7 @@
 #!/bin/bash
 
-LOGDIR=`mktemp -d -t farm-ng-log-$(date +"%s")-XXX`
+LOGNAME="farm-ng-log-$(hostname)-$(date --iso-8601=seconds)"
+LOGDIR=`mktemp -d -t $LOGNAME-XXX`
 
 systemctl list-unit-files | grep "tractor" | awk '{print $1}' | while IFS= read -r unit; do
   logfile=$LOGDIR/$unit.log
@@ -19,3 +20,10 @@ journalctl -b --dmesg --no-pager > $logfile
 zipfile=$LOGDIR.zip
 echo "Zipping to $zipfile"
 zip -r $zipfile $LOGDIR
+
+cp $zipfile $HOME/tractor-logs/adhoc/$LOGNAME.zip
+cd $HOME/tractor-logs
+git add adhoc/$LOGNAME.zip
+git commit -m "[$(hostname)] automated upload"
+git push origin master
+cd -
