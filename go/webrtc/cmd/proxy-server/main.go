@@ -22,7 +22,7 @@ import (
 const (
 	eventBusAddr = "239.20.20.21"
 	eventBusPort = 10000
-	rtpAddr      = "239.20.20.20:5000"
+	rtpAddr      = "127.0.0.1:5000"
 	// Set this too low and we see packet loss in chrome://webrtc-internals, and on the network interface (`netstat -suna`)
 	// But what should it be? `sysctl net.core.rmem_max`?
 	rtpReadBufferSize  = 1024 * 1024 * 8
@@ -33,7 +33,14 @@ const (
 func main() {
 	// Create EventBus proxy
 	eventChan := make(chan *pb.Event)
-	eventBus := eventbus.NewEventBus((net.UDPAddr{IP: net.ParseIP(eventBusAddr), Port: eventBusPort}), "webrtc-proxy", eventChan, true)
+	eventBus := eventbus.NewEventBus(&eventbus.EventBusConfig{
+		MulticastGroup: (net.UDPAddr{IP: net.ParseIP(eventBusAddr), Port: eventBusPort}),
+		ServiceName:    "webrtc-proxy",
+	}).WithEventChannel(&eventbus.EventChannelConfig{
+		Channel:              eventChan,
+		PublishAnnouncements: true,
+	})
+
 	eventBusProxy := proxy.NewEventBusProxy((&proxy.EventBusProxyConfig{EventBus: eventBus, EventSource: eventChan}))
 
 	// Create RTP proxy

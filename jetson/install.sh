@@ -17,8 +17,8 @@ prefix=/opt/farm_ng make -C $SERVICE_DIR/uhubctl install
 # clean
 systemctl list-unit-files | grep "tractor" | awk '{print $1}' | xargs --no-run-if-empty -n1 sudo systemctl disable
 rm -f /opt/farm_ng/systemd/*.sh
-rm -f /etc/systemd/system/tractor*.service
-rm -f /etc/systemd/system/tractor*.path
+rm -f /etc/systemd/system/multi-user.target.wants/tractor*
+rm -f /etc/systemd/system/tractor*
 
 # install
 cp $SERVICE_DIR/*.sh /opt/farm_ng/systemd
@@ -34,13 +34,11 @@ systemctl daemon-reload
 
 # start automatically on boot
 systemctl enable tractor-bringup.service
-systemctl enable tractor-ready.path
-systemctl enable tractor-steering.service
 systemctl enable tractor.service
+systemctl enable tractor.path
+systemctl enable tractor-steering.service
+systemctl enable tractor-steering.path
+systemctl enable tractor-camera.service
+systemctl enable tractor-camera.path
 systemctl enable tractor-webservices.service
-
-# start immediately
-systemctl start tractor-ready.path
-systemctl start tractor-steering.service
-systemctl start tractor-bringup.service
-systemctl start tractor-webservices.service
+systemctl enable tractor-webservices.path
