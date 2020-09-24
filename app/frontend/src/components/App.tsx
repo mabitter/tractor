@@ -6,12 +6,13 @@ import { State } from "./State";
 import { Video } from "./Video";
 import { Debug } from "./Debug";
 import { Map } from "./Map";
+import { Root as Scope } from "./scope/Root";
 import styles from "./App.module.scss";
 
 export const App: React.FC = () => {
   return (
     <div className={styles.app}>
-      <Navbar collapseOnSelect expand="lg" bg="dark" variant="dark">
+      <Navbar collapseOnSelect expand="md" bg="dark" variant="dark">
         <Navbar.Brand as={Link} to="/">
           farm-ng
         </Navbar.Brand>
@@ -33,6 +34,9 @@ export const App: React.FC = () => {
             <Nav.Link as={Link} to="/debug">
               Debug
             </Nav.Link>
+            <Nav.Link as={Link} to="/scope">
+              Scope
+            </Nav.Link>
           </Nav>
         </Navbar.Collapse>
       </Navbar>
@@ -43,6 +47,7 @@ export const App: React.FC = () => {
         <Route exact path="/video" component={Video} />
         <Route exact path="/map" component={Map} />
         <Route exact path="/debug" component={Debug} />
+        <Route exact path="/scope" component={Scope} />
         <Route render={() => <p>Not found</p>} />
       </Switch>
     </div>

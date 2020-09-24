@@ -4,9 +4,17 @@
   box-sizing: border-box;
 }
 
-body,
+body {
+  height: 100%;
+}
+
 html {
   height: 100%;
+
+  // Since the browser default font size is 16px, setting the root element
+  // font size to 62.5% means 1rem = 10px. This gives us more reasonable
+  // defaults for a developer interface and makes the mental math easier.
+  font-size: 62.5%;
 }
 
 #root {

@@ -1,0 +1,42 @@
+@import "~bootstrap/scss/functions";
+@import "~bootstrap/scss/variables";
+@import "~bootstrap/scss/mixins";
+
+.header {
+  display: flex;
+  padding: 1em 0;
+  border-bottom: 1px solid #f9f9f9;
+}
+
+.dataSourceButtons {
+  display: flex;
+  margin-bottom: 0.5em;
+
+  button:first-of-type {
+    margin-right: 0.5em;
+  }
+}
+
+$stream-button-height: 2.5em;
+@keyframes stream-button-stripes {
+  from {
+    background-position: $stream-button-height 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+.streamButton {
+  width: 7em;
+
+  &.active {
+    @include gradient-striped();
+    background-size: $stream-button-height $stream-button-height;
+    animation: stream-button-stripes $progress-bar-animation-timing;
+  }
+}
+
+.bufferTimestamps {
+  display: flex;
+  justify-content: space-between;
+}

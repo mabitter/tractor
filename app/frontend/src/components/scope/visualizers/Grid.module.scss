@@ -1,0 +1,22 @@
+.slider {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  :global(.range-slider__wrap) {
+    flex-grow: 1;
+    margin-left: 1em;
+  }
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.gridItem {
+  padding: 0.5em;
+  flex-grow: 1;
+  width: 24rem;
+  max-height: 48rem;
+}

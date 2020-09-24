@@ -1,15 +1,16 @@
-import { BusEvent } from "../models/BusEvent";
 import { observable, ObservableMap } from "mobx";
 import { decodeAnyEvent } from "../models/decodeAnyEvent";
 import { BusEventEmitter } from "../models/BusEventEmitter";
+import { EventType } from "../registry/events";
+import { duration } from "../utils/duration";
 
 interface StreamSnapshot {
-  latestEvent: BusEvent | null;
+  latestEvent: EventType | null;
   latestEventTime?: Date;
   eventsSinceLastSnapshot: number;
 }
 
-const snapshotPeriod = 1000; // ms
+const snapshotPeriod = duration.second;
 
 // A store for eventbus events.
 // Accumulate events (and metadata) in a snapshot, then every snapshotPeriod update the

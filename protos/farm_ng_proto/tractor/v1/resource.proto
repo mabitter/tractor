@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+
+package farm_ng_proto.tractor.v1;
+option go_package = "github.com/farm_ng/genproto";
+
+message Resource {
+  // The normalized relative path of the resource within a (local or remote)
+  // resource archive.
+  // Paths must be in the form "foo/bar/baz.jpg", with no leading slash, no
+  // relative path segments ("foo/../bar"), and no duplicate separators
+  // ("foo//bar").
+  string path = 1;
+
+  // The path to the archive.  For writing or reading locally, this will be
+  // something like /var/log/farm-ng/00001.
+  string archive_path = 2;
+
+  // (Optional) The content-type (aka MIME-type) of the file.
+  // See https://www.iana.org/assignments/media-types/media-types.xhtml.
+  string content_type = 3;
+
+  // (Optional) The uncompressed size of the resource in bytes.
+  google.protobuf.Int64Value length = 4;
+}

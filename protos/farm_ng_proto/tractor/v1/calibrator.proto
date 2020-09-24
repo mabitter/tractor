@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+import "farm_ng_proto/tractor/v1/geometry.proto";
+import "farm_ng_proto/tractor/v1/apriltag.proto";
+import "farm_ng_proto/tractor/v1/image.proto";
+import "farm_ng_proto/tractor/v1/resource.proto";
+
+package farm_ng_proto.tractor.v1;
+option go_package = "github.com/farm_ng/genproto";
+
+message CalibratorCommand {
+  message ApriltagRigStart {
+    repeated int32 tag_ids = 1;
+  }
+  oneof command {
+    bool stop = 1;
+    ApriltagRigStart apriltag_rig_start = 2;
+  }
+}
+enum SolverStatus {
+  SOLVER_STATUS_UNSPECIFIED = 0;
+  SOLVER_STATUS_INITIAL = 1;
+  SOLVER_STATUS_CONVERGED = 2;
+  SOLVER_STATUS_FAILED = 3;
+}
+
+message ApriltagRigTagStats {
+  int32 tag_id = 1;
+  // how many frames was this tag observed in
+  int32 n_frames = 2;
+  double tag_rig_rmse = 3;
+  map<int32, double> per_image_rmse = 4;
+}
+
+message MonocularApriltagRigModel {
+  ApriltagRig rig = 1;
+  SolverStatus solver_status = 2;
+  double rmse = 3;
+  repeated ApriltagRigTagStats tag_stats = 4;
+  string camera_frame_name = 5;
+  repeated ApriltagDetections detections = 6;
+  PoseTree camera_poses_rig = 7;
+  repeated Image reprojection_images = 8;
+}
+
+message CalibratorStatus {
+  message ApriltagRigProgress {
+    int32 num_frames = 1;
+    MonocularApriltagRigModel rig_model = 2;
+    // The rig model saved to disk.
+    Resource rig_model_resource = 3;
+  }
+
+  oneof status {
+    ApriltagRigProgress apriltag_rig = 1;
+  }
+}

@@ -1,50 +1,75 @@
 syntax = "proto3";
 
+import "farm_ng_proto/tractor/v1/image.proto";
 import "farm_ng_proto/tractor/v1/geometry.proto";
 
 package farm_ng_proto.tractor.v1;
 option go_package = "github.com/farm_ng/genproto";
 
+enum ApriltagFamily {
+  APRILTAG_FAMILY_UNSPECIFIED = 0;
+  APRILTAG_FAMILY_TAG36H11 = 1;
+}
+
 // protobuf copy of the ApriltagDetection struct from apriltag library.
 // source: https://github.com/AprilRobotics/apriltag/blob/master/apriltag.h#L196
 // comments copied for reference.
 message ApriltagDetection {
-   enum Family {
-     FAMILY_UNSPECIFIED=0;
-     FAMILY_TAG36H11=1;
-   }
-   Family tag_family = 1;
-    // The decoded ID of the tag
-   int32 id = 2;
+  ApriltagFamily tag_family = 1;
 
-    // How many error bits were corrected? Note: accepting large numbers of
-    // corrected errors leads to greatly increased false positive rates.
-    // NOTE: As of this implementation, the detector cannot detect tags with
-    // a hamming distance greater than 2.
-    int32 hamming = 3;
+  // The decoded ID of the tag
+  int32 id = 2;
 
-    // A measure of the quality of the binary decoding process: the
-    // average difference between the intensity of a data bit versus
-    // the decision threshold. Higher numbers roughly indicate better
-    // decodes. This is a reasonable measure of detection accuracy
-    // only for very small tags-- not effective for larger tags (where
-    // we could have sampled anywhere within a bit cell and still
-    // gotten a good detection.)
-    float decision_margin = 4;
+  // How many error bits were corrected? Note: accepting large numbers of
+  // corrected errors leads to greatly increased false positive rates.
+  // NOTE: As of this implementation, the detector cannot detect tags with
+  // a hamming distance greater than 2.
+  int32 hamming = 3;
 
-    // The 3x3 homography matrix describing the projection from an
-    // "ideal" tag (with corners at (-1,1), (1,1), (1,-1), and (-1,
-    // -1)) to pixels in the image.
-    Matrix image_h_tag = 5;
+  // A measure of the quality of the binary decoding process: the
+  // average difference between the intensity of a data bit versus
+  // the decision threshold. Higher numbers roughly indicate better
+  // decodes. This is a reasonable measure of detection accuracy
+  // only for very small tags-- not effective for larger tags (where
+  // we could have sampled anywhere within a bit cell and still
+  // gotten a good detection.)
+  float decision_margin = 4;
 
-    // The center of the detection in image pixel coordinates.
-    Vec2  c = 6;
+  // The 3x3 homography matrix describing the projection from an
+  // "ideal" tag (with corners at (-1,1), (1,1), (1,-1), and (-1,
+  // -1)) to pixels in the image.
+  // TODO(ethanrublee) consider removing this as its not valid for fisheye.
+  Matrix image_h_tag = 5;
 
-    // The corners of the tag in image pixel coordinates. These always
-    // wrap counter-clock wise around the tag.
-    repeated Vec2 p = 7;
+  // SE3 pose of tag, typically in the camera frame.
+  NamedSE3Pose pose = 8;
+
+  // The center of the detection in image pixel coordinates.
+  Vec2 c = 6;
+
+  // The corners of the tag in image pixel coordinates. These always
+  // wrap counter-clock wise around the tag.
+  repeated Vec2 p = 7;
+
+  // Size of the tag, outside corner to corner on one side, in meters.
+  double tag_size = 9;
 }
 
 message ApriltagDetections {
-	repeated ApriltagDetection detections=1;
+  repeated ApriltagDetection detections = 1;
+  Image image = 2;
+  double rmse = 3;
+}
+
+message ApriltagRig {
+  message Entry {
+    int32 id = 1;
+    string frame_name = 2;
+    double tag_size = 3;
+    repeated Vec3 tag_points = 4;
+    NamedSE3Pose pose = 5;
+  }
+  string name = 1;
+  int32 root_tag_id = 2;
+  repeated Entry entries = 3;
 }

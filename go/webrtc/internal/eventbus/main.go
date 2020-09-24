@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	maxDatagramSize = 1024
+	maxDatagramSize = 65507
 )
 
 type EventBus struct {

@@ -10,7 +10,8 @@ message TrackingCameraPoseFrame {
   google.protobuf.Timestamp stamp_pose = 2;
 
   // X, Y, Z values of translation, in meters (relative to initial position)
-  // Qi, Qj, Qk, Qr components of rotation as represented in quaternion rotation (relative to initial position)
+  // Qi, Qj, Qk, Qr components of rotation as represented in quaternion rotation
+  // (relative to initial position)
   SE3Pose start_pose_current = 3;
   // X, Y, Z values of velocity, in meters/sec
   Vec3 velocity = 4;
@@ -21,27 +22,43 @@ message TrackingCameraPoseFrame {
   // X, Y, Z values of angular acceleration, in radians/sec^2
   Vec3 angular_acceleration = 7;
 
-   enum Confidence {
-     CONFIDENCE_UNSPECIFIED=0;
-     CONFIDENCE_FAILED=1;
-     CONFIDENCE_LOW=2;
-     CONFIDENCE_MEDIUM=3;
-     CONFIDENCE_HIGH=4;
-   }
-   Confidence tracker_confidence = 8;
-   Confidence mapper_confidence = 9;
+  enum Confidence {
+    CONFIDENCE_UNSPECIFIED = 0;
+    CONFIDENCE_FAILED = 1;
+    CONFIDENCE_LOW = 2;
+    CONFIDENCE_MEDIUM = 3;
+    CONFIDENCE_HIGH = 4;
+  }
+  Confidence tracker_confidence = 8;
+  Confidence mapper_confidence = 9;
 }
-
 
 message TrackingCameraMotionFrame {
   int32 frame_number = 1;
   google.protobuf.Timestamp stamp_motion = 2;
   enum MotionType {
-  MOTION_TYPE_UNSPECIFIED=0;
-  MOTION_TYPE_GYRO=1;
-  MOTION_TYPE_ACCEL=2;
+    MOTION_TYPE_UNSPECIFIED = 0;
+    MOTION_TYPE_GYRO = 1;
+    MOTION_TYPE_ACCEL = 2;
   };
-  MotionType motion_type=3;
+  MotionType motion_type = 3;
   // X, Y, Z values of velocity, in meters/sec
   Vec3 motion_data = 4;
+}
+
+message TrackingCameraCommand {
+  message RecordStart {
+    enum Mode {
+      MODE_UNSPECIFIED = 0;
+      MODE_EVERY_FRAME = 1;
+      MODE_EVERY_APRILTAG_FRAME = 2;
+      MODE_APRILTAG_STABLE = 3;
+    }
+    Mode mode = 1;
+  }
+
+  oneof command {
+    RecordStart record_start = 1;
+    bool record_stop = 2;
+  }
 }

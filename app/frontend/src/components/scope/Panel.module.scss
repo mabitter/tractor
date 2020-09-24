@@ -1,0 +1,16 @@
+.panel {
+  flex: 1 1 100%;
+  display: flex;
+  max-width: 100%;
+  border-bottom: 1px solid #f9f9f9;
+  position: relative;
+  padding: 1em;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.removeButton {
+  position: absolute;
+  right: 1em;
+  top: 1em;
+}

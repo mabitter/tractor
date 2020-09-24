@@ -1,0 +1,9 @@
+.stream {
+  min-height: 0;
+  min-width: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  padding: 1em;
+}

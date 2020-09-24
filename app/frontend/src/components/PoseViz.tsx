@@ -1,30 +1,13 @@
 import { useState, useEffect } from "react";
 import * as React from "react";
-import { Quaternion, Vector3 } from "three";
+import { Vector3 } from "three";
 import { Event as BusAnyEvent } from "../../genproto/farm_ng_proto/tractor/v1/io";
-import {
-  NamedSE3Pose,
-  Vec3,
-  Quaternion as Quat
-} from "../../genproto/farm_ng_proto/tractor/v1/geometry";
+import { NamedSE3Pose } from "../../genproto/farm_ng_proto/tractor/v1/geometry";
 import { Html } from "drei";
 import { useFrame } from "react-three-fiber";
 import { decodeAnyEvent } from "../models/decodeAnyEvent";
 import { useStores } from "../hooks/useStores";
-
-function ToVector3(v?: Vec3): Vector3 {
-  if (!v) {
-    return new Vector3(0, 0, 0);
-  }
-  return new Vector3(v.x, v.y, v.z);
-}
-
-function ToQuaternion(v?: Quat): Quaternion {
-  if (!v) {
-    return new Quaternion(0, 0, 0, 0);
-  }
-  return new Quaternion(v.x, v.y, v.z, v.w);
-}
+import { toQuaternion, toVector3 } from "../utils/protoConversions";
 
 type ReferenceFrameNode = {
   pose: NamedSE3Pose;
@@ -50,8 +33,8 @@ const findFrameB = function (
 };
 
 export const ReferenceFrameViz: React.FC<ReferenceFrameNode> = (state) => {
-  const position = ToVector3(state.pose.aPoseB?.position);
-  const rotation = ToQuaternion(state.pose.aPoseB?.rotation);
+  const position = toVector3(state.pose.aPoseB?.position);
+  const rotation = toQuaternion(state.pose.aPoseB?.rotation);
   return (
     <group>
       <line>
@@ -90,7 +73,7 @@ export const PoseViz: React.FC = () => {
   const busEventEmitter = busEventStore.transport;
 
   useEffect(() => {
-    busEventEmitter.on(
+    const handle = busEventEmitter.on(
       "type.googleapis.com/farm_ng_proto.tractor.v1.NamedSE3Pose",
       (event: BusAnyEvent) => {
         const pose = decodeAnyEvent(event) as NamedSE3Pose;
@@ -107,9 +90,7 @@ export const PoseViz: React.FC = () => {
       }
     );
     return () => {
-      busEventEmitter.off(
-        "type.googleapis.com/farm_ng_proto.tractor.v1.NamedSE3Pose"
-      );
+      handle.unsubscribe();
     };
   }, [busEventEmitter]);
 

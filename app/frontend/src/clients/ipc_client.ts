@@ -1,14 +1,3 @@
-// The following hack is a work around for this issue:
-// https://github.com/stephenh/ts-proto/issues/108
-
-import * as protobuf from "protobufjs/minimal";
-import * as Long from "long";
-
-if (protobuf.util.Long !== Long) {
-  protobuf.util.Long = Long;
-  protobuf.configure();
-}
-
 import { Event } from "../../genproto/farm_ng_proto/tractor/v1/io";
 
 type ICallback = (event: Event) => void;

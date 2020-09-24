@@ -1,0 +1,17 @@
+{
+  "React Functional Component": {
+    "scope": "typescriptreact",
+    "prefix": "rfc",
+    "body": [
+      "import * as React from 'react'",
+      "import styles from './${1:ComponentName}.module.scss'",
+      "export const ${1:ComponentName}: React.FC = () => {",
+      "  return (",
+      "    $0",
+      "  )",
+      "};",
+      " "
+    ],
+    "description": "Create React Functional Component"
+  }
+}

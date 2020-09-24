@@ -45,8 +45,12 @@ message NamedSE3Pose {
   string frame_b = 3;
 }
 
+message PoseTree {
+  repeated NamedSE3Pose poses = 1;
+}
+
 message Matrix {
   uint32 rows = 1;
   uint32 cols = 2;
-  repeated double data = 3 [packed=true];
+  repeated double data = 3 [packed = true];
 };

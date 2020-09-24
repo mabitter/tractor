@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+import "farm_ng_proto/tractor/v1/resource.proto";
+import "farm_ng_proto/tractor/v1/camera_model.proto";
+
+package farm_ng_proto.tractor.v1;
+option go_package = "github.com/farm_ng/genproto";
+
+message Image {
+  // The associated image resource
+  Resource resource = 1;
+  CameraModel camera_model = 2;
+}
