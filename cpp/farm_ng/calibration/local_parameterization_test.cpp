@@ -1,4 +1,4 @@
-#include "farm_ng/calibration/local_parameterization_se3.h"
+#include "farm_ng/calibration/local_parameterization.h"
 
 #include "gtest/gtest.h"
 

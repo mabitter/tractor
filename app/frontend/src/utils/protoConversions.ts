@@ -4,6 +4,8 @@ import {
   SE3Pose as SE3PoseProto
 } from "../../genproto/farm_ng_proto/tractor/v1/geometry";
 import { Quaternion, Vector3, Matrix4 } from "three";
+import { Resource } from "../../genproto/farm_ng_proto/tractor/v1/resource";
+import { EventTypeId, eventTypeIds } from "../registry/events";
 
 export function toVector3(v?: Vec3Proto): Vector3 {
   return v ? new Vector3(v.x, v.y, v.z) : new Vector3();
@@ -39,4 +41,19 @@ export function se3PoseToMatrix4(pose: SE3PoseProto): Matrix4 {
     new Vector3(1, 1, 1)
   );
   return m;
+}
+
+const resourceFormats = ["application/json", "application/protobuf"] as const;
+type ResourceFormat = typeof resourceFormats[number];
+export function parseResourceContentType(
+  resource: Resource
+): [ResourceFormat | null, EventTypeId | null] {
+  const [format, typeUrl] = resource.contentType.split("; type=");
+  if (!eventTypeIds.includes(typeUrl as EventTypeId)) {
+    return [null, null];
+  }
+  if (!resourceFormats.includes(format as ResourceFormat)) {
+    return [null, null];
+  }
+  return [format as ResourceFormat, typeUrl as EventTypeId];
 }

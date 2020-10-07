@@ -9,7 +9,7 @@ require (
 	github.com/pion/rtp v1.6.0
 	github.com/pion/webrtc/v3 v3.0.0-beta.1
 	github.com/rs/cors v1.7.0
-	github.com/twitchtv/twirp v5.12.1+incompatible
+	github.com/twitchtv/twirp v7.1.0+incompatible
 	golang.org/x/net v0.0.0-20200625001655-4c5254603344
 	golang.org/x/sys v0.0.0-20200831180312-196b9ba8737a
 	google.golang.org/protobuf v1.25.0

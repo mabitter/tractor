@@ -4,17 +4,21 @@
 #include <string>
 
 #include "farm_ng_proto/tractor/v1/io.pb.h"
+#include "farm_ng_proto/tractor/v1/resource.pb.h"
 namespace farm_ng {
+using farm_ng_proto::tractor::v1::Resource;
+typedef farm_ng_proto::tractor::v1::Event EventPb;
 
 class EventLogReaderImpl;
 class EventLogReader {
  public:
-  EventLogReader(std::string log_path);
+  explicit EventLogReader(std::string log_path);
+  explicit EventLogReader(Resource log_path);
   ~EventLogReader();
 
   void Reset(std::string log_path);
 
-  farm_ng_proto::tractor::v1::Event ReadNext();
+  EventPb ReadNext();
 
  private:
   std::unique_ptr<EventLogReaderImpl> impl_;

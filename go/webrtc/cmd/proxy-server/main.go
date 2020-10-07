@@ -68,13 +68,17 @@ func main() {
 	spa := spa.Handler{StaticPath: path.Join(farmNgRoot, "build/frontend"), IndexPath: "index.html"}
 
 	// Create blobstore handler
+	blobstoreRoot := os.Getenv("BLOBSTORE_ROOT")
+	if blobstoreRoot == "" {
+		log.Fatalln("BLOBSTORE_ROOT must be set.")
+	}
 	blobstoreCorsWrapper := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{"GET"},
 		AllowedHeaders: []string{"Content-Type"},
 	})
-	blobstore := blobstoreCorsWrapper.Handler(
-		http.FileServer(http.Dir(path.Join(farmNgRoot, "..", "tractor-data"))))
+	log.Println("Serving blobstore from ", blobstoreRoot)
+	blobstore := blobstoreCorsWrapper.Handler(http.FileServer(http.Dir(blobstoreRoot)))
 
 	// Serve the API and frontend
 	serverAddr := defaultServerAddr
@@ -84,7 +88,7 @@ func main() {
 	}
 	router := mux.NewRouter()
 	router.PathPrefix("/twirp/").Handler(api)
-	router.PathPrefix("/resources/").Handler(http.StripPrefix("/resources", blobstore))
+	router.PathPrefix("/blobstore/").Handler(http.StripPrefix("/blobstore", blobstore))
 	router.PathPrefix("/").Handler(spa)
 	srv := &http.Server{
 		Handler:      router,

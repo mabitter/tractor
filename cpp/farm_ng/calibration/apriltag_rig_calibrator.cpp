@@ -7,10 +7,11 @@
 
 #include "farm_ng/calibration/apriltag.h"
 #include "farm_ng/calibration/camera_model.h"
-#include "farm_ng/calibration/local_parameterization_se3.h"
+#include "farm_ng/calibration/local_parameterization.h"
 #include "farm_ng/calibration/pose_utils.h"
 
 #include "farm_ng/ipc.h"
+
 #include "farm_ng/sophus_protobuf.h"
 
 namespace farm_ng {
@@ -81,6 +82,8 @@ void ApriltagRigModel::ToMonocularApriltagRigModel(
     pose->set_frame_a(FrameRigTag(rig_name, id));
     pose->set_frame_b(FrameRigTag(rig_name, root_id));
     SophusToProto(tag_pose_root, pose->mutable_a_pose_b());
+    CHECK(tag_size.count(id)) << id;
+    CHECK(points_tag.count(id)) << id;
     node->set_tag_size(tag_size.at(id));
     for (const auto& v : points_tag.at(id)) {
       EigenToProto(v, node->add_points_tag());
@@ -114,6 +117,7 @@ void ModelError(ApriltagRigModel& model) {
   double all_sum_error = 0;
   double all_error_count = 0;
   model.per_tag_stats.clear();
+  model.reprojection_images.clear();
 
   for (size_t frame_n = 0; frame_n < model.camera_poses_root.size();
        ++frame_n) {
@@ -177,7 +181,7 @@ void ModelError(ApriltagRigModel& model) {
     }
     Image reprojection_image;
     reprojection_image.CopyFrom(detections.image());
-    auto resource_path = GetUniqueResource(
+    auto resource_path = GetUniqueArchiveResource(
         FrameNameNumber("reprojection", frame_n), "png", "image/png");
     reprojection_image.mutable_resource()->CopyFrom(resource_path.first);
 
@@ -197,12 +201,17 @@ void ModelError(ApriltagRigModel& model) {
 }
 
 ApriltagRigCalibrator::ApriltagRigCalibrator(
-    EventBus* bus, const CalibratorCommand::ApriltagRigStart& rig_start)
-    : bus_(bus), root_id_(0) {
-  if (rig_start.tag_ids_size() > 0) {
-    root_id_ = rig_start.tag_ids().Get(0);
+    const CalibrateApriltagRigConfiguration& config)
+    : root_id_(0) {
+  LOG(INFO) << "Config: HERRREEE" << config.ShortDebugString();
+  if (config.tag_ids_size() > 0) {
+    root_id_ = config.tag_ids().Get(0);
+  } else if (config.root_tag_id() >= 0) {
+    root_id_ = config.root_tag_id();
   }
-  for (auto id : rig_start.tag_ids()) {
+  rig_name_ = config.name();
+  LOG(INFO) << "rig name: " << rig_name_ << "  root tag_id : " << root_id_;
+  for (auto id : config.tag_ids()) {
     ids_.insert(id);
   }
 }
@@ -349,23 +358,23 @@ int ApriltagRigCalibrator::NumFrames() const {
   return static_cast<int>(all_detections_.size());
 }
 
-bool Solve(ApriltagRigModel& model) {
+bool Solve(ApriltagRigModel* model) {
   ceres::Problem problem;
 
-  for (auto& id_tag_pose_root : model.tag_pose_root) {
+  for (auto& id_tag_pose_root : model->tag_pose_root) {
     int tag_id = id_tag_pose_root.first;
     SE3d& tag_pose_root = id_tag_pose_root.second;
     // Specify local update rule for our parameter
     problem.AddParameterBlock(tag_pose_root.data(), SE3d::num_parameters,
                               new LocalParameterizationSE3);
-    if (tag_id == model.root_id) {
+    if (tag_id == model->root_id) {
       problem.SetParameterBlockConstant(tag_pose_root.data());
     }
   }
 
-  for (size_t frame_n = 0; frame_n < model.camera_poses_root.size();
+  for (size_t frame_n = 0; frame_n < model->camera_poses_root.size();
        ++frame_n) {
-    auto& o_camera_pose_root = model.camera_poses_root[frame_n];
+    auto& o_camera_pose_root = model->camera_poses_root[frame_n];
     if (!o_camera_pose_root) {
       continue;
     }
@@ -373,7 +382,7 @@ bool Solve(ApriltagRigModel& model) {
     problem.AddParameterBlock(o_camera_pose_root->data(), SE3d::num_parameters,
                               new LocalParameterizationSE3);
 
-    const auto& detections = model.all_detections[frame_n];
+    const auto& detections = model->all_detections[frame_n];
     for (const auto& detection : detections.detections()) {
       ceres::CostFunction* cost_function1 =
           new ceres::AutoDiffCostFunction<CameraApriltagRigCostFunctor, 8,
@@ -384,7 +393,7 @@ bool Solve(ApriltagRigModel& model) {
                   PointsImage(detection)));
       problem.AddResidualBlock(cost_function1, new ceres::HuberLoss(1.0),
                                o_camera_pose_root->data(),
-                               model.tag_pose_root.at(detection.id()).data());
+                               model->tag_pose_root.at(detection.id()).data());
     }
   }
 
@@ -403,14 +412,14 @@ bool Solve(ApriltagRigModel& model) {
   ceres::Solve(options, &problem, &summary);
   LOG(INFO) << summary.FullReport() << std::endl;
   if (summary.termination_type == ceres::CONVERGENCE) {
-    model.status = SolverStatus::SOLVER_STATUS_CONVERGED;
+    model->status = SolverStatus::SOLVER_STATUS_CONVERGED;
   } else {
-    model.status = SolverStatus::SOLVER_STATUS_FAILED;
+    model->status = SolverStatus::SOLVER_STATUS_FAILED;
   }
 
   LOG(INFO) << "root mean of residual error: "
             << std::sqrt(summary.final_cost / summary.num_residuals);
-  ModelError(model);
+  ModelError(*model);
 
   return true;
 }

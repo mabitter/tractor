@@ -7,8 +7,13 @@ import {
   Vec2
 } from "../../genproto/farm_ng_proto/tractor/v1/geometry";
 import {
+  BaseToCameraInitialization,
+  BaseToCameraModel,
+  CalibrationParameter,
   CalibratorCommand,
-  CalibratorStatus
+  CalibratorStatus,
+  MonocularApriltagRigModel,
+  ViewInitialization
 } from "../../genproto/farm_ng_proto/tractor/v1/calibrator";
 import {
   Announce,
@@ -30,6 +35,21 @@ import {
   StartProgramRequest,
   StopProgramRequest
 } from "../../genproto/farm_ng_proto/tractor/v1/program_supervisor";
+import {
+  CaptureCalibrationDatasetConfiguration,
+  CaptureCalibrationDatasetResult,
+  CaptureCalibrationDatasetStatus
+} from "../../genproto/farm_ng_proto/tractor/v1/capture_calibration_dataset";
+import {
+  CalibrateApriltagRigConfiguration,
+  CalibrateApriltagRigResult,
+  CalibrateApriltagRigStatus
+} from "../../genproto/farm_ng_proto/tractor/v1/calibrate_apriltag_rig";
+import {
+  CalibrateBaseToCameraConfiguration,
+  CalibrateBaseToCameraResult,
+  CalibrateBaseToCameraStatus
+} from "../../genproto/farm_ng_proto/tractor/v1/calibrate_base_to_camera";
 
 export type EventType =
   | SteeringCommand
@@ -42,6 +62,8 @@ export type EventType =
   | Announce
   | Vec2
   | Image
+  | CalibrationParameter
+  | ViewInitialization
   | LoggingCommand
   | TrackingCameraCommand
   | CalibratorCommand
@@ -50,7 +72,19 @@ export type EventType =
   | ProgramSupervisorStatus
   | StartProgramRequest
   | ApriltagRig
-  | StopProgramRequest;
+  | StopProgramRequest
+  | MonocularApriltagRigModel
+  | BaseToCameraModel
+  | BaseToCameraInitialization
+  | CaptureCalibrationDatasetConfiguration
+  | CaptureCalibrationDatasetStatus
+  | CaptureCalibrationDatasetResult
+  | CalibrateApriltagRigConfiguration
+  | CalibrateApriltagRigStatus
+  | CalibrateApriltagRigResult
+  | CalibrateBaseToCameraConfiguration
+  | CalibrateBaseToCameraStatus
+  | CalibrateBaseToCameraResult;
 
 // Infer the keys, but restrict values to Message<EventType>
 // https://stackoverflow.com/a/54598743
@@ -70,14 +104,28 @@ export const eventRegistry = inferKeys({
   "type.googleapis.com/farm_ng_proto.tractor.v1.Announce": Announce,
   "type.googleapis.com/farm_ng_proto.tractor.v1.Vec2": Vec2,
   "type.googleapis.com/farm_ng_proto.tractor.v1.Image": Image,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.ViewInitialization": ViewInitialization,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.BaseToCameraInitialization": BaseToCameraInitialization,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrationParameter": CalibrationParameter,
   "type.googleapis.com/farm_ng_proto.tractor.v1.LoggingCommand": LoggingCommand,
   "type.googleapis.com/farm_ng_proto.tractor.v1.TrackingCameraCommand": TrackingCameraCommand,
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibratorCommand": CalibratorCommand,
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibratorStatus": CalibratorStatus,
   "type.googleapis.com/farm_ng_proto.tractor.v1.LoggingStatus": LoggingStatus,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.MonocularApriltagRigModel": MonocularApriltagRigModel,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.BaseToCameraModel": BaseToCameraModel,
   "type.googleapis.com/farm_ng_proto.tractor.v1.ProgramSupervisorStatus": ProgramSupervisorStatus,
   "type.googleapis.com/farm_ng_proto.tractor.v1.StartProgramRequest": StartProgramRequest,
-  "type.googleapis.com/farm_ng_proto.tractor.v1.StopProgramRequest": StopProgramRequest
+  "type.googleapis.com/farm_ng_proto.tractor.v1.StopProgramRequest": StopProgramRequest,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CaptureCalibrationDatasetConfiguration": CaptureCalibrationDatasetConfiguration,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CaptureCalibrationDatasetStatus": CaptureCalibrationDatasetStatus,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CaptureCalibrationDatasetResult": CaptureCalibrationDatasetResult,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigConfiguration": CalibrateApriltagRigConfiguration,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigStatus": CalibrateApriltagRigStatus,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigResult": CalibrateApriltagRigResult,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraConfiguration": CalibrateBaseToCameraConfiguration,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraStatus": CalibrateBaseToCameraStatus,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraResult": CalibrateBaseToCameraResult
 });
 
 export const eventTypeIds = Object.keys(

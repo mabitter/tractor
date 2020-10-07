@@ -4,7 +4,7 @@ foreach(src_prefix
    apriltag_rig_calibrator
    base_to_camera_calibrator
    camera_model
-   local_parameterization_se3
+   local_parameterization
    pose_utils
    solver
 )
@@ -31,9 +31,3 @@ target_link_libraries(farm_ng_calibration_test
     gtest gmock gtest_main
 )
 gtest_discover_tests(farm_ng_calibration_test)
-
-
-add_executable(base_to_camera_calibrator_driver
-base_to_camera_calibrator_driver.cpp)
-
-target_link_libraries(base_to_camera_calibrator_driver farm-ng-calibration gflags )

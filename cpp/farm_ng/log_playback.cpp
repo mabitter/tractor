@@ -1,11 +1,11 @@
 // # playback at 0.1 speed realtime
-// farm-ng-log-playback --loop=false --speed=0.1 --log= /tmp/farm-ng-event.log
+// log_playback --loop=false --speed=0.1 --log= /tmp/farm-ng-event.log
 // # playback realtime
-// farm-ng-log-playback --loop=false --speed=1 --log= /tmp/farm-ng-event.log
+// log_playback --loop=false --speed=1 --log= /tmp/farm-ng-event.log
 // # playback realtime and loop
-// farm-ng-log-playback --loop=true --speed=1 --log= /tmp/farm-ng-event.log
+// log_playback --loop=true --speed=1 --log= /tmp/farm-ng-event.log
 // # playback at 10x speed and publish on event bus, don't do this with robot
-// not-estopped as this will send steering commands! farm-ng-log-playback --send
+// not-estopped as this will send steering commands! log_playback --send
 // --loop=true --speed=10 --log= /tmp/farm-ng-event.log
 
 #include <gflags/gflags.h>
@@ -18,10 +18,11 @@
 #include <stdexcept>
 
 #include "farm_ng/event_log_reader.h"
+#include "farm_ng/init.h"
 #include "farm_ng/ipc.h"
 
 DEFINE_string(log, "/tmp/farm-ng-event.log",
-              "Path to log file, recorded with farm-ng-ipc-logger");
+              "Path to log file, recorded with ipc_logger");
 
 DEFINE_bool(loop, false, "Loop?");
 
@@ -38,11 +39,11 @@ std::chrono::microseconds ToChronoDuration(
 
 class IpcLogPlayback {
  public:
-  IpcLogPlayback(boost::asio::io_service& io_service)
-      : io_service_(io_service),
-        bus_(GetEventBus(io_service, "log-playback")),
+  IpcLogPlayback(EventBus& bus)
+      : io_service_(bus.get_io_service()),
+        bus_(bus),
         log_reader_(FLAGS_log),
-        log_timer_(io_service) {
+        log_timer_(bus.get_io_service()) {
     log_read_and_send(boost::system::error_code());
   }
 
@@ -96,14 +97,14 @@ class IpcLogPlayback {
 };
 }  // namespace farm_ng
 
-int main(int argc, char** argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  try {
-    boost::asio::io_service io_service;
-    farm_ng::IpcLogPlayback playback(io_service);
-    io_service.run();
-  } catch (std::runtime_error& e) {
-    std::cerr << e.what() << std::endl;
-  }
-  return 0;
+void Cleanup(farm_ng::EventBus& bus) {}
+
+int Main(farm_ng::EventBus& bus) {
+  farm_ng::IpcLogPlayback playback(bus);
+  bus.get_io_service().run();
+  return EXIT_SUCCESS;
+}
+
+int main(int argc, char* argv[]) {
+  return farm_ng::Main(argc, argv, &Main, &Cleanup);
 }

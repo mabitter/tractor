@@ -4,6 +4,7 @@
 #include <iostream>
 #include <mutex>
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <google/protobuf/util/time_util.h>
 #include <librealsense2/rsutil.h>
@@ -15,6 +16,7 @@
 #include "apriltag_pose.h"
 #include "tag36h11.h"
 
+#include <farm_ng/init.h>
 #include <farm_ng/ipc.h>
 #include <farm_ng/sophus_protobuf.h>
 
@@ -33,6 +35,8 @@ using farm_ng_proto::tractor::v1::ApriltagDetections;
 using farm_ng_proto::tractor::v1::CameraModel;
 using farm_ng_proto::tractor::v1::TrackingCameraCommand;
 using farm_ng_proto::tractor::v1::TrackingCameraPoseFrame;
+
+DEFINE_bool(jetson, false, "Use jetson hardware encoding.");
 
 namespace farm_ng {
 
@@ -561,9 +565,8 @@ class ApriltagsFilter {
 
 class TrackingCameraClient {
  public:
-  TrackingCameraClient(boost::asio::io_service& io_service)
-      : io_service_(io_service),
-        event_bus_(GetEventBus(io_service_, "tracking-camera")) {
+  TrackingCameraClient(EventBus& bus)
+      : io_service_(bus.get_io_service()), event_bus_(bus) {
     event_bus_.GetEventSignal()->connect(std::bind(
         &TrackingCameraClient::on_event, this, std::placeholders::_1));
     // TODO(ethanrublee) look up image size from realsense profile.
@@ -579,7 +582,7 @@ class TrackingCameraClient {
         " video/x-h264, stream-format=byte-stream !";
 
     std::string cmd0 = std::string("appsrc !") + " videoconvert ! " +
-                       encoder_omxh264 +
+                       (FLAGS_jetson ? encoder_omxh264 : encoder_x264) +
 
                        " rtph264pay pt=96 mtu=1400 config-interval=10 !" +
                        " udpsink port=5000";
@@ -701,7 +704,7 @@ class TrackingCameraClient {
                 latest_command_.record_start().mode() ==
                     TrackingCameraCommand::RecordStart::MODE_APRILTAG_STABLE &&
                 tag_filter_.AddApriltags(apriltags)) {
-              auto resource_path = GetUniqueResource(
+              auto resource_path = GetUniqueArchiveResource(
                   "tracking_camera_left_apriltag", "png", "image/png");
               apriltags.mutable_image()->mutable_resource()->CopyFrom(
                   resource_path.first);
@@ -755,22 +758,22 @@ class TrackingCameraClient {
 };
 }  // namespace farm_ng
 
-int main(int argc, char* argv[]) try {
-  // Initialize Google's logging library.
-  FLAGS_logtostderr = 1;
-  google::InitGoogleLogging(argv[0]);
+void Cleanup(farm_ng::EventBus& bus) {}
 
+int Main(farm_ng::EventBus& bus) {
   // Declare RealSense pipeline, encapsulating the actual device and sensors
   rs2::pipeline pipe;
-  boost::asio::io_service io_service;
-  farm_ng::TrackingCameraClient client(io_service);
-  io_service.run();
+  farm_ng::TrackingCameraClient client(bus);
+  try {
+    bus.get_io_service().run();
+  } catch (const rs2::error& e) {
+    std::cerr << "RealSense error calling " << e.get_failed_function() << "("
+              << e.get_failed_args() << "):\n    " << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
   return EXIT_SUCCESS;
-} catch (const rs2::error& e) {
-  std::cerr << "RealSense error calling " << e.get_failed_function() << "("
-            << e.get_failed_args() << "):\n    " << e.what() << std::endl;
-  return EXIT_FAILURE;
-} catch (const std::exception& e) {
-  std::cerr << e.what() << std::endl;
-  return EXIT_FAILURE;
+}
+
+int main(int argc, char* argv[]) {
+  return farm_ng::Main(argc, argv, &Main, &Cleanup);
 }

@@ -1,4 +1,5 @@
 #include "farm_ng/event_log.h"
+#include "farm_ng/init.h"
 #include "farm_ng/ipc.h"
 
 #include <glog/logging.h>
@@ -14,11 +15,11 @@ using farm_ng_proto::tractor::v1::Resource;
 
 class IpcLogger {
  public:
-  IpcLogger(boost::asio::io_service& io_service)
-      : bus_(GetEventBus(io_service, "ipc-logger")),
+  IpcLogger(EventBus& bus)
+      : bus_(bus),
         log_writer_(nullptr),
-        log_timer_(io_service),
-        announce_timer_(io_service) {
+        log_timer_(bus_.get_io_service()),
+        announce_timer_(bus_.get_io_service()) {
     bus_.GetEventSignal()->connect(
         std::bind(&IpcLogger::on_event, this, std::placeholders::_1));
     log_state(boost::system::error_code());
@@ -30,13 +31,12 @@ class IpcLogger {
     last_command_.CopyFrom(command);
     switch (last_command_.command_case()) {
       case LoggingCommand::kRecordStart: {
-        auto resource_path = GetUniqueResource("events", "log", "");
+        auto resource_path = GetUniqueArchiveResource("events", "log", "");
         log_resource_ = resource_path.first;
         LOG(INFO) << "Starting log: " << log_resource_.ShortDebugString();
         log_writer_.reset(new EventLogWriter(resource_path.second));
         auto recording = logging_status_.mutable_recording();
-        recording->set_archive_path(
-            last_command_.record_start().archive_path());
+        recording->set_archive_path(resource_path.first.path());
         recording->set_path(resource_path.second.string());
         recording->set_n_messages(0);
         recording->mutable_stamp_begin()->CopyFrom(MakeTimestampNow());
@@ -121,18 +121,14 @@ class IpcLogger {
 
 }  // namespace farm_ng
 
-int main(int argc, char* argv[]) {
-  // Initialize Google's logging library.
-  FLAGS_logtostderr = 1;
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-  try {
-    boost::asio::io_service io_service;
-    farm_ng::IpcLogger logger(io_service);
-    io_service.run();
-  } catch (std::exception& e) {
-    std::cerr << "Exception: " << e.what() << "\n";
-  }
+void Cleanup(farm_ng::EventBus& bus) {}
 
+int Main(farm_ng::EventBus& bus) {
+  farm_ng::IpcLogger logger(bus);
+  bus.get_io_service().run();
   return 0;
+}
+
+int main(int argc, char* argv[]) {
+  return farm_ng::Main(argc, argv, &Main, &Cleanup);
 }

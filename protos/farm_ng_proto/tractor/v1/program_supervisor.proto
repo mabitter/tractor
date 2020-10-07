@@ -5,13 +5,13 @@ package farm_ng_proto.tractor.v1;
 option go_package = "github.com/farm_ng/genproto";
 
 message Program {
-  int32 id = 1;
+  string id = 1;
   string name = 2;
   string description = 3;
 }
 
 message ProgramExecution {
-  int32 id = 1;
+  string id = 1;
   int32 pid = 2;
   int32 exit_code = 3;
   google.protobuf.Timestamp stamp_start = 4;
@@ -36,9 +36,9 @@ message ProgramSupervisorStatus {
 }
 
 message StartProgramRequest {
-  int32 id = 1;
+  string id = 1;
 }
 
 message StopProgramRequest {
-  int32 id = 1;
+  string id = 1;
 }

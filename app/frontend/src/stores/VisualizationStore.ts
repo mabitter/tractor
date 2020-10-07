@@ -1,12 +1,11 @@
 import { observable, computed, transaction } from "mobx";
+// import { CalibrateApriltagRigStatus } from "../../genproto/farm_ng_proto/tractor/v1/calibrate_apriltag_rig";
+// import { CalibrateBaseToCameraStatus } from "../../genproto/farm_ng_proto/tractor/v1/calibrate_base_to_camera";
 import {
   BusEventEmitter,
   BusEventEmitterHandle
 } from "../models/BusEventEmitter";
-import {
-  HttpResourceArchive,
-  ResourceArchive
-} from "../models/ResourceArchive";
+import { ResourceArchive } from "../models/ResourceArchive";
 import { StreamingBuffer } from "../models/StreamingBuffer";
 import { EventTypeId } from "../registry/events";
 import {
@@ -79,19 +78,29 @@ export class Panel {
 }
 
 // const testBuffer: Buffer = {
-//   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibratorStatus": {
+//   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigStatus": {
 //     test: [
 //       [
 //         0,
-//         CalibratorStatus.fromJSON({
-//           apriltagRig: {
-//             numFrames: 10,
-//             rigModelResource: {
-//               path: "cal01/apriltag_rig_model/solved-02807-00021.json",
-//               archivePath: "",
-//               contentType:
-//                 "application/json; type=type.googleapis.com/farm_ng_proto.tractor.v1.MonocularApriltagRigModel"
-//             }
+//         CalibrateApriltagRigStatus.fromJSON({
+//           result: {
+//             path: "apriltag_rig_models/rig.json",
+//             contentType:
+//               "application/json; type=type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigResult"
+//           }
+//         })
+//       ]
+//     ]
+//   },
+//   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraStatus": {
+//     test: [
+//       [
+//         0,
+//         CalibrateBaseToCameraStatus.fromJSON({
+//           result: {
+//             path: "base_to_camera_models/base_to_camera.json",
+//             contentType:
+//               "application/json; type=type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraResult"
 //           }
 //         })
 //       ]
@@ -108,9 +117,7 @@ export class VisualizationStore {
   @observable buffer: Buffer = {};
   @observable bufferLogLoadProgress = 0;
   @observable bufferExpirationWindow = 1 * duration.minute;
-  @observable resourceArchive: ResourceArchive = new HttpResourceArchive(
-    `http://${window.location.host}/resources`
-  );
+  @observable resourceArchive: ResourceArchive;
   @observable panels: { [k: string]: Panel } = {};
 
   private streamingBuffer: StreamingBuffer = new StreamingBuffer();
@@ -118,9 +125,13 @@ export class VisualizationStore {
   private busEventEmitterHandle: BusEventEmitterHandle | null = null;
   @observable private streamingTimerHandle: number | null = null;
 
-  constructor(public busEventEmitter: BusEventEmitter) {
+  constructor(
+    public busEventEmitter: BusEventEmitter,
+    resourceArchive: ResourceArchive
+  ) {
     const p = new Panel();
     this.panels = { [p.id]: p };
+    this.resourceArchive = resourceArchive;
   }
 
   @computed get isStreaming(): boolean {

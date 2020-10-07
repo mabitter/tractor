@@ -10,6 +10,16 @@ import "farm_ng_proto/tractor/v1/resource.proto";
 package farm_ng_proto.tractor.v1;
 option go_package = "github.com/farm_ng/genproto";
 
+// The solver status, relatively generic and used to denote if a model is just
+// an initialization, has been solved and converged, or if the solver failed.
+enum SolverStatus {
+  SOLVER_STATUS_UNSPECIFIED = 0;
+  SOLVER_STATUS_INITIAL = 1;
+  SOLVER_STATUS_CONVERGED = 2;
+  SOLVER_STATUS_FAILED = 3;
+}
+
+// NOTE: This is deprecated.
 // Commands that the calibrator process listens to.
 message CalibratorCommand {
   // This finishes (runs the solver) calibration if it is currently running and
@@ -35,13 +45,115 @@ message CalibratorCommand {
   }
 }
 
-// The solver status, relatively generic and used to denote if a model is just
-// an initialization, has been solved and converged, or if the solver failed.
-enum SolverStatus {
-  SOLVER_STATUS_UNSPECIFIED = 0;
-  SOLVER_STATUS_INITIAL = 1;
-  SOLVER_STATUS_CONVERGED = 2;
-  SOLVER_STATUS_FAILED = 3;
+// NOTE: This is deprecated.
+// The status message produced by the Calibration process.
+message CalibratorStatus {
+  // Sent periodically, when ever a new frame is added, and once after the Stop
+  // command and the solver has run.
+  message ApriltagRigProgress {
+    int32 num_frames = 1;
+    // The rig model saved to disk.
+    // Will be a json encoded protobuf with type MonocularApriltagRigModel.
+    Resource rig_model_resource = 3;
+    bool finished = 4;
+  }
+
+  oneof status {
+    ApriltagRigProgress apriltag_rig = 1;
+  }
+}
+
+// From ceres::IterationSummary
+message SolverIterationSummary {
+  // Current iteration number.
+  int32 iteration = 1;
+
+  // Step was numerically valid, i.e., all values are finite and the
+  // step reduces the value of the linearized model.
+  //
+  // Note: step_is_valid is always true when iteration = 0.
+  bool step_is_valid = 2;
+
+  // Step did not reduce the value of the objective function
+  // sufficiently, but it was accepted because of the relaxed
+  // acceptance criterion used by the non-monotonic trust region
+  // algorithm.
+  //
+  // Note: step_is_nonmonotonic is always false when iteration = 0;
+  bool step_is_nonmonotonic = 3;
+
+  // Whether or not the minimizer accepted this step or not. If the
+  // ordinary trust region algorithm is used, this means that the
+  // relative reduction in the objective function value was greater
+  // than Solver::Options::min_relative_decrease. However, if the
+  // non-monotonic trust region algorithm is used
+  // (Solver::Options:use_nonmonotonic_steps = true), then even if the
+  // relative decrease is not sufficient, the algorithm may accept the
+  // step and the step is declared successful.
+  //
+  // Note: step_is_successful is always true when iteration = 0.
+  bool step_is_successful = 4;
+
+  // Value of the objective function.
+  double cost = 5;
+
+  // Change in the value of the objective function in this
+  // iteration. This can be positive or negative.
+  double cost_change = 6;
+
+  // Infinity norm of the gradient vector.
+  double gradient_max_norm = 7;
+
+  // 2-norm of the gradient vector.
+  double gradient_norm = 8;
+
+  // 2-norm of the size of the step computed by the optimization
+  // algorithm.
+  double step_norm = 9;
+
+  // For trust region algorithms, the ratio of the actual change in
+  // cost and the change in the cost of the linearized approximation.
+  double relative_decrease = 10;
+
+  // Size of the trust region at the end of the current iteration. For
+  // the Levenberg-Marquardt algorithm, the regularization parameter
+  // mu = 1.0 / trust_region_radius.
+  double trust_region_radius = 11;
+
+  // For the inexact step Levenberg-Marquardt algorithm, this is the
+  // relative accuracy with which the Newton(LM) step is solved. This
+  // number affects only the iterative solvers capable of solving
+  // linear systems inexactly. Factorization-based exact solvers
+  // ignore it.
+  double eta = 12;
+
+  // Step sized computed by the line search algorithm.
+  double step_size = 13;
+
+  // Number of function value evaluations used by the line search algorithm.
+  int32 line_search_function_evaluations = 14;
+
+  // Number of function gradient evaluations used by the line search algorithm.
+  int32 line_search_gradient_evaluations = 15;
+
+  // Number of iterations taken by the line search algorithm.
+  int32 line_search_iterations = 16;
+
+  // Number of iterations taken by the linear solver to solve for the
+  // Newton step.
+  int32 linear_solver_iterations = 17;
+
+  // All times reported below are wall times.
+
+  // Time (in seconds) spent inside the minimizer loop in the current
+  // iteration.
+  double iteration_time_in_seconds = 18;
+
+  // Time (in seconds) spent inside the trust region step solver.
+  double step_solver_time_in_seconds = 19;
+
+  // Time (in seconds) since the user called Solve().
+  double cumulative_time_in_seconds = 20;
 }
 
 message PerImageRmse {
@@ -136,21 +248,32 @@ message BaseToCameraModel {
   double wheel_radius = 4;
   NamedSE3Pose base_pose_camera = 5;
   repeated Sample samples = 6;
+
+  BaseToCameraInitialization initialization = 7;
 }
 
-// The status message produced by the Calibration process.
-message CalibratorStatus {
-  // Sent periodically, when ever a new frame is added, and once after the Stop
-  // command and the solver has run.
-  message ApriltagRigProgress {
-    int32 num_frames = 1;
-    // The rig model saved to disk.
-    // Will be a json encoded protobuf with type MonocularApriltagRigModel.
-    Resource rig_model_resource = 3;
-    bool finished = 4;
-  }
+message CalibrationParameter {
+  double value = 1;
+  bool constant = 2;
+}
 
-  oneof status {
-    ApriltagRigProgress apriltag_rig = 1;
-  }
+enum ViewDirection {
+  VIEW_DIRECTION_UNSPECIFIED = 0;
+  VIEW_DIRECTION_FRONT = 1;
+  VIEW_DIRECTION_FRONT_INVERTED = 2;
+  VIEW_DIRECTION_REAR = 3;
+  VIEW_DIRECTION_REAR_INVERTED = 4;
+}
+
+message ViewInitialization {
+  CalibrationParameter x = 1;
+  CalibrationParameter y = 2;
+  CalibrationParameter z = 3;
+  ViewDirection view_direction = 4;
+}
+
+message BaseToCameraInitialization {
+  CalibrationParameter wheel_radius = 1;
+  CalibrationParameter wheel_baseline = 2;
+  ViewInitialization base_pose_camera = 3;
 }

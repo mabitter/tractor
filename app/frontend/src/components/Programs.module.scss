@@ -1,5 +1,9 @@
-.programList {
+.programs {
   :global(table) {
     margin-bottom: 0;
   }
+
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
 }

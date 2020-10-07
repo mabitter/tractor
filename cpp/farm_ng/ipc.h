@@ -4,16 +4,18 @@
 #include <map>
 #include <memory>
 
+#include <glog/logging.h>
+#include <google/protobuf/util/json_util.h>
 #include <boost/asio.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/signals2.hpp>
 
-#include <google/protobuf/util/json_util.h>
-
+#include "farm_ng/blobstore.h"
 #include "farm_ng_proto/tractor/v1/io.pb.h"
 #include "farm_ng_proto/tractor/v1/resource.pb.h"
 
 namespace farm_ng {
+using farm_ng_proto::tractor::v1::LoggingStatus;
 
 typedef boost::signals2::signal<void(const farm_ng_proto::tractor::v1::Event&)>
     EventSignal;
@@ -43,6 +45,7 @@ class EventBus : public boost::asio::io_service::service {
   void Send(const farm_ng_proto::tractor::v1::Event& event);
 
   void SetName(const std::string& name);
+  std::string GetName();
 
  private:
   std::unique_ptr<EventBusImpl> impl_;
@@ -52,52 +55,33 @@ void SetArchivePath(const std::string& name);
 boost::filesystem::path GetArchivePath();
 boost::filesystem::path GetArchiveRoot();
 
-template <typename ProtobufT>
-void WriteProtobufToJsonFile(const boost::filesystem::path& path,
-                             const ProtobufT& proto) {
-  google::protobuf::util::JsonPrintOptions print_options;
-  print_options.add_whitespace = true;
-  print_options.always_print_primitive_fields = true;
-  std::string json_str;
-  google::protobuf::util::MessageToJsonString(proto, &json_str, print_options);
-  std::ofstream outf(path.string());
-  outf << json_str;
-}
-
-template <typename ProtobufT>
-void WriteProtobufToBinaryFile(const boost::filesystem::path& path,
-                               const ProtobufT& proto) {
-  std::string binary_str;
-  proto.SerializeToString(&binary_str);
-  std::ofstream outf(path.string(), std::ofstream::binary);
-  outf << binary_str;
-}
-
 // returns a resource that can be written to that will have a unique file
 // name, in the active logging directory.
 std::pair<farm_ng_proto::tractor::v1::Resource, boost::filesystem::path>
-GetUniqueResource(const std::string& prefix, const std::string& ext,
-                  const std::string& mime_type);
+GetUniqueArchiveResource(const std::string& prefix, const std::string& ext,
+                         const std::string& mime_type);
 
+// writes a protobuf, as json, to the active logging directory
 template <typename ProtobufT>
-farm_ng_proto::tractor::v1::Resource WriteProtobufToJsonResource(
+farm_ng_proto::tractor::v1::Resource ArchiveProtobufAsJsonResource(
     const std::string& prefix, const ProtobufT& message) {
   auto resource_path =
-      GetUniqueResource(prefix, "json",
-                        "application/json; type=type.googleapis.com/" +
-                            ProtobufT::descriptor()->full_name());
+      GetUniqueArchiveResource(prefix, "json",
+                               "application/json; type=type.googleapis.com/" +
+                                   ProtobufT::descriptor()->full_name());
 
   WriteProtobufToJsonFile(resource_path.second, message);
   return resource_path.first;
 }
 
+// writes a protobuf, as binary, to the active logging directory
 template <typename ProtobufT>
-farm_ng_proto::tractor::v1::Resource WriteProtobufToBinaryResource(
+farm_ng_proto::tractor::v1::Resource ArchiveProtobufAsBinaryResource(
     const std::string& prefix, const ProtobufT& message) {
-  auto resource_path =
-      GetUniqueResource(prefix, "pb",
-                        "application/protobuf; type=type.googleapis.com/" +
-                            ProtobufT::descriptor()->full_name());
+  auto resource_path = GetUniqueArchiveResource(
+      prefix, "pb",
+      "application/protobuf; type=type.googleapis.com/" +
+          ProtobufT::descriptor()->full_name());
 
   WriteProtobufToBinaryFile(resource_path.second, message);
   return resource_path.first;
@@ -122,12 +106,18 @@ farm_ng_proto::tractor::v1::Event MakeEvent(std::string name,
   return MakeEvent(name, message, MakeTimestampNow());
 }
 
-inline EventBus& GetEventBus(boost::asio::io_service& io_service,
-                             const std::string& service_name) {
+inline EventBus& GetEventBus(boost::asio::io_service& io_service) {
   auto& service = boost::asio::use_service<EventBus>(io_service);
-  service.SetName(service_name);
   return service;
 }
+
+void WaitForServices(EventBus& bus,
+                     const std::vector<std::string>& service_names_in);
+LoggingStatus StartLogging(EventBus& bus, const std::string& archive_path);
+LoggingStatus StopLogging(EventBus& bus);
+void RequestStopLogging(EventBus& bus);
+void RequestStartCapturing(EventBus& bus);
+void RequestStopCapturing(EventBus& bus);
 
 }  // namespace farm_ng
 

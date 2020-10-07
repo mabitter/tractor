@@ -6,7 +6,7 @@ export function decodeAnyEvent<T extends EventType>(
   event: BusAnyEvent
 ): T | null {
   const { data } = event;
-  if (!data || !data.value) {
+  if (!data) {
     return null;
   }
   const message = eventRegistry[
@@ -17,5 +17,5 @@ export function decodeAnyEvent<T extends EventType>(
     console.error(`No decoder registered for type: ${data.typeUrl}`);
     return null;
   }
-  return message.decode(data.value);
+  return message.decode(data.value || new Uint8Array());
 }

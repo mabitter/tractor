@@ -1,4 +1,5 @@
 #include "farm_ng/event_log_reader.h"
+#include "farm_ng/blobstore.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -32,8 +33,14 @@ class EventLogReaderImpl {
   std::string log_path_;
   std::ifstream in_;
 };
+
 EventLogReader::EventLogReader(std::string log_path)
     : impl_(new EventLogReaderImpl(log_path)) {}
+
+EventLogReader::EventLogReader(farm_ng_proto::tractor::v1::Resource resource)
+    : impl_(new EventLogReaderImpl(
+          (GetBlobstoreRoot() / resource.path()).string())) {}
+
 EventLogReader::~EventLogReader() { impl_.reset(nullptr); }
 
 void EventLogReader::Reset(std::string log_path) {
