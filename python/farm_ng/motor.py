@@ -6,13 +6,13 @@ import sys
 
 import linuxfd
 import numpy as np
-from farm_ng.canbus import CANSocket
-from farm_ng.config import default_config
-from farm_ng.ipc import get_event_bus
-from farm_ng.ipc import make_event
 from farm_ng_proto.tractor.v1 import motor_pb2
 from google.protobuf.text_format import MessageToString
 from google.protobuf.timestamp_pb2 import Timestamp
+
+from farm_ng.canbus import CANSocket
+from farm_ng.config import default_config
+from farm_ng.ipc import get_event_bus, make_event
 
 logger = logging.getLogger('farm_ng.motor')
 
@@ -262,11 +262,11 @@ def main():
         can_socket = CANSocket('can0')
     except OSError as e:
         sys.stderr.write(
-            f'Could not listen on interface can0\n',
+            'Could not listen on interface can0\n',
         )
         sys.exit(e.errno)
 
-    print(f'Listening on can0')
+    print('Listening on can0')
     loop = asyncio.get_event_loop()
 
     config = default_config()
@@ -276,11 +276,23 @@ def main():
         config.hub_motor_gear_ratio.value,
         config.hub_motor_poll_pairs.value, 7, can_socket,
     )
+    right_motor_aft = HubMotor(
+        'right_motor_aft',
+        config.wheel_radius.value,
+        config.hub_motor_gear_ratio.value,
+        config.hub_motor_poll_pairs.value, 8, can_socket,
+    )
     left_motor = HubMotor(
         'left_motor',
         config.wheel_radius.value,
         config.hub_motor_gear_ratio.value,
         config.hub_motor_poll_pairs.value, 9, can_socket,
+    )
+    left_motor_aft = HubMotor(
+        'left_motor_aft',
+        config.wheel_radius.value,
+        config.hub_motor_gear_ratio.value,
+        config.hub_motor_poll_pairs.value, 10, can_socket,
     )
 
     count = [0]
@@ -291,10 +303,14 @@ def main():
             logger.info(
                 'right: %s\nleft: %s',
                 MessageToString(right_motor.get_state(), as_one_line=True),
+                MessageToString(right_motor_aft.get_state(), as_one_line=True),
                 MessageToString(left_motor.get_state(), as_one_line=True),
+                MessageToString(left_motor_aft.get_state(), as_one_line=True),
             )
         right_motor.send_velocity_command(0.0)
+        right_motor_aft.send_velocity_command(0.0)
         left_motor.send_velocity_command(0.0)
+        left_motor_aft.send_velocity_command(0.0)
         count[0] += 1
 
     loop.add_reader(can_socket, lambda: can_socket.recv())

@@ -3,19 +3,19 @@ import logging
 import sys
 
 import numpy as np
+from farm_ng_proto.tractor.v1.tractor_pb2 import TractorState
+from google.protobuf.text_format import MessageToString
+from google.protobuf.timestamp_pb2 import Timestamp
+from liegroups import SE3
+
 from farm_ng.canbus import CANSocket
 from farm_ng.config import default_config
-from farm_ng.ipc import get_event_bus
-from farm_ng.ipc import make_event
+from farm_ng.ipc import get_event_bus, make_event
 from farm_ng.kinematics import TractorKinematics
 from farm_ng.motor import HubMotor
 from farm_ng.periodic import Periodic
 from farm_ng.proto_utils import se3_to_proto
 from farm_ng.steering import SteeringClient
-from farm_ng_proto.tractor.v1.tractor_pb2 import TractorState
-from google.protobuf.text_format import MessageToString
-from google.protobuf.timestamp_pb2 import Timestamp
-from liegroups import SE3
 
 logger = logging.getLogger('tractor')
 logger.setLevel(logging.INFO)
@@ -44,13 +44,22 @@ class TractorController:
         radius = self.config.wheel_radius.value
         gear_ratio = self.config.hub_motor_gear_ratio.value
         poll_pairs = self.config.hub_motor_poll_pairs.value
+
         self.right_motor = HubMotor(
             'right_motor',
             radius, gear_ratio, poll_pairs, 7, self.can_socket,
         )
+        self.right_motor_aft = HubMotor(
+            'right_motor_aft',
+            radius, gear_ratio, poll_pairs, 8, self.can_socket,
+        )
         self.left_motor = HubMotor(
             'left_motor',
             radius, gear_ratio, poll_pairs, 9, self.can_socket,
+        )
+        self.left_motor_aft = HubMotor(
+            'left_motor_aft',
+            radius, gear_ratio, poll_pairs, 10, self.can_socket,
         )
 
         self.control_timer = Periodic(
@@ -136,7 +145,9 @@ class TractorController:
             self.tractor_state.commanded_wheel_velocity_rads_left = left
             self.tractor_state.commanded_wheel_velocity_rads_right = right
             self.right_motor.send_velocity_command_rads(right)
+            self.right_motor_aft.send_velocity_command_rads(right)
             self.left_motor.send_velocity_command_rads(left)
+            self.left_motor_aft.send_velocity_command_rads(left)
         self.event_bus.send(make_event('tractor_state', self.tractor_state))
 
 
