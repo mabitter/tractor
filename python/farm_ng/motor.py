@@ -299,13 +299,14 @@ def main():
 
     def command_loop():
         periodic.read()
+        # TODO (mabitter) add aft motors logging here
         if count[0] % (2*command_rate_hz) == 0:
             logger.info(
                 'right: %s\nleft: %s',
                 MessageToString(right_motor.get_state(), as_one_line=True),
-                MessageToString(right_motor_aft.get_state(), as_one_line=True),
+                # MessageToString(right_motor_aft.get_state(), as_one_line=True),
                 MessageToString(left_motor.get_state(), as_one_line=True),
-                MessageToString(left_motor_aft.get_state(), as_one_line=True),
+                # MessageToString(left_motor_aft.get_state(), as_one_line=True),
             )
         right_motor.send_velocity_command(0.0)
         right_motor_aft.send_velocity_command(0.0)

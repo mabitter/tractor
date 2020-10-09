@@ -75,6 +75,7 @@ class TractorController:
         now.GetCurrentTime()
 
         if (self.n_cycle % (5*self.command_rate_hz)) == 0:
+            # TODO (mabitter) - need to update logging to capture right_motor_aft, left_motor_aft
             logger.info(
                 '\nright motor:\n  %s\nleft motor:\n  %s\n state:\n %s',
                 MessageToString(self.right_motor.get_state(), as_one_line=True),
@@ -83,10 +84,16 @@ class TractorController:
             )
 
         self.tractor_state.stamp.CopyFrom(now)
+
         self.tractor_state.wheel_velocity_rads_left = self.left_motor.velocity_rads()
+        self.tractor_state.wheel_velocity_rads_left_aft = self.left_motor_aft.velocity_rads()
         self.tractor_state.wheel_velocity_rads_right = self.right_motor.velocity_rads()
+        self.tractor_state.wheel_velocity_rads_right_aft = self.right_motor_aft.velocity_rads()
+
         self.tractor_state.average_update_rate_left_motor = self.left_motor.average_update_rate()
+        self.tractor_state.average_update_rate_left_motor_aft = self.left_motor_aft.average_update_rate()
         self.tractor_state.average_update_rate_right_motor = self.right_motor.average_update_rate()
+        self.tractor_state.average_update_rate_right_motor_aft = self.right_motor_aft.average_update_rate()
 
         if self._last_odom_stamp is not None:
             dt = (now.ToMicroseconds() - self._last_odom_stamp.ToMicroseconds())*1e-6
@@ -123,6 +130,7 @@ class TractorController:
         self.n_cycle += 1
         brake_current = 10.0
         steering_command = self.steering.get_steering_command()
+
         if steering_command.brake > 0.0:
             self.tractor_state.commanded_brake_current = brake_current
             self.tractor_state.commanded_wheel_velocity_rads_left = 0.0
@@ -130,7 +138,9 @@ class TractorController:
             self.tractor_state.target_unicycle_velocity = 0.0
             self.tractor_state.target_unicycle_angular_velocity = 0.0
             self.right_motor.send_current_brake_command(brake_current)
+            self.right_motor_aft.send_current_command(brake_current)
             self.left_motor.send_current_brake_command(brake_current)
+            self.left_motor_aft.send_current_brake_command(brake_current)
 
         else:
             self.tractor_state.target_unicycle_velocity = steering_command.velocity
@@ -144,6 +154,7 @@ class TractorController:
             self.tractor_state.commanded_brake_current = 0
             self.tractor_state.commanded_wheel_velocity_rads_left = left
             self.tractor_state.commanded_wheel_velocity_rads_right = right
+
             self.right_motor.send_velocity_command_rads(right)
             self.right_motor_aft.send_velocity_command_rads(right)
             self.left_motor.send_velocity_command_rads(left)
