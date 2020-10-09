@@ -362,24 +362,6 @@ Sophus::SE3d ApriltagPoseToSE3d(const apriltag_pose_t& pose) {
       Map33RowMajor(pose.R->data),
       Eigen::Vector3d(pose.t->data[0], pose.t->data[1], pose.t->data[2]));
 }
-EventPb GenerateExtrinsicPoseEvent() {
-  NamedSE3Pose base_pose_t265;
-  base_pose_t265.set_frame_a("odometry/wheel");
-  base_pose_t265.set_frame_b("tracking_camera/front/left");
-  Sophus::SE3d se3(Sophus::SE3d::rotZ(-M_PI / 2.0));
-  se3 = se3 * Sophus::SE3d::rotX(M_PI / 2.0);
-  se3 = se3 * Sophus::SE3d::rotY(M_PI);
-  // se3 = se3 * Sophus::SE3d::rotZ(M_PI);
-  se3.translation().x() = -1.0;
-  se3.translation().z() = 1.0;
-  // for good diagram of t265:
-  // https://github.com/IntelRealSense/librealsense/blob/development/doc/t265.md
-
-  SophusToProto(se3, base_pose_t265.mutable_a_pose_b());
-  EventPb event =
-      farm_ng::MakeEvent("pose/extrinsic_calibrator", base_pose_t265);
-  return event;
-}
 
 // https://github.com/IntelRealSense/librealsense/blob/master/examples/pose-apriltag/rs-pose-apriltag.cpp
 // Note this function mutates detection, by undistorting the points and
@@ -426,7 +408,7 @@ class ApriltagDetector {
     tag36h11_destroy(tag_family_);
   }
 
-  ApriltagDetections Detect(cv::Mat gray) {
+  ApriltagDetections Detect(cv::Mat gray, google::protobuf::Timestamp stamp) {
     CHECK_EQ(gray.channels(), 1);
     CHECK_EQ(gray.type(), CV_8UC1);
 
@@ -467,12 +449,13 @@ class ApriltagDetector {
       if (pose) {
         auto* named_pose = detection->mutable_pose();
         SophusToProto(*pose, named_pose->mutable_a_pose_b());
+        named_pose->mutable_a_pose_b()->mutable_stamp()->CopyFrom(stamp);
         named_pose->set_frame_a("tracking_camera/front/left");
         named_pose->set_frame_b("tag/" + std::to_string(det->id));
         if (event_bus_) {
           event_bus_->Send(MakeEvent(
               "pose/tracking_camera/front/left/tag/" + std::to_string(det->id),
-              *named_pose));
+              *named_pose, stamp));
         }
       }
     }
@@ -581,10 +564,13 @@ class VideoFileWriter {
 
     auto resource_path = GetUniqueArchiveResource(
         image_pb_.camera_model().frame_name(), "mp4", "video/mp4");
-    writer_ = std::make_shared<cv::VideoWriter>(
+    std::string video_writer_dev =
         std::string("appsrc !") + " videoconvert ! " +
-            (FLAGS_jetson ? encoder_omxh264 : encoder_x264) +
-            " mp4mux ! filesink location=" + resource_path.second.string(),
+        (FLAGS_jetson ? encoder_omxh264 : encoder_x264) +
+        " mp4mux ! filesink location=" + resource_path.second.string();
+    LOG(INFO) << "writing video with: " << video_writer_dev;
+    writer_ = std::make_shared<cv::VideoWriter>(
+        video_writer_dev,
         0,                        // fourcc
         image_pb_.fps().value(),  // fps
         cv::Size(image_pb_.camera_model().image_width(),
@@ -720,7 +706,7 @@ class TrackingCameraClient {
   }
 
   void detect_apriltags(cv::Mat image, google::protobuf::Timestamp stamp) {
-    auto apriltags = detector_->Detect(image);
+    auto apriltags = detector_->Detect(image, stamp);
 
     if (tag_filter_.AddApriltags(apriltags)) {
       auto resource_path = GetUniqueArchiveResource(
@@ -761,17 +747,19 @@ class TrackingCameraClient {
       // detecting.  Apriltag detection takes >30ms on the nano.
       if (!detection_in_progress_) {
         detection_in_progress_ = true;
-        auto guard = std::make_shared<ScopeGuard>([this] {
-          // signal that we're done detecting, so can post another frame for
-          // detection.
-          std::lock_guard<std::mutex> lock(mtx_realsense_state_);
-          detection_in_progress_ = false;
-        });
+
         auto stamp = google::protobuf::util::TimeUtil::MillisecondsToTimestamp(
             fisheye_frame.get_timestamp());
 
         // schedule april tag detection, do it as frequently as possible.
-        io_service_.post([this, fisheye_frame, stamp, guard] {
+        io_service_.post([this, fisheye_frame, stamp] {
+          ScopeGuard guard([this] {
+            // signal that we're done detecting, so can post another frame for
+            // detection.
+            std::lock_guard<std::mutex> lock(mtx_realsense_state_);
+            detection_in_progress_ = false;
+          });
+
           if (!latest_command_.has_record_start()) {
             // Close may be called regardless of state.  If we were recording,
             // it closes the video file on the last chunk.
@@ -808,7 +796,7 @@ class TrackingCameraClient {
                                          ToPoseFrame(pose_frame)));
       event_bus_.Send(ToNamedPoseEvent(pose_frame));
      }*/
-  }  // namespace farm_ng
+  }
   boost::asio::io_service& io_service_;
   EventBus& event_bus_;
   std::unique_ptr<cv::VideoWriter> writer_;
