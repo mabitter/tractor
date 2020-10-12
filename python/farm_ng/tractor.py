@@ -1,6 +1,7 @@
 import asyncio
 import bisect
 import logging
+import os
 import sys
 from collections import deque
 
@@ -88,6 +89,21 @@ class TractorController:
             'left_motor',
             radius, gear_ratio, poll_pairs, 9, self.can_socket,
         )
+        # TODO(isherman|ethanruble) add to configuration system
+        # to enable four motors, just do:
+        # $ mkdir -p /home/farmer/tractor-data/config
+        # $ touch /home/farmer/tractor-data/config/HAS_FOUR_WHEELS
+        self.has_four_motors = os.path.exists('/home/farmer/tractor-data/config/HAS_FOUR_WHEELS')
+        if self.has_four_motors:
+            logger.info('has_four_motors')
+            self.right_motor_aft = HubMotor(
+                'right_motor_aft',
+                radius, gear_ratio, poll_pairs, 8, self.can_socket,
+            )
+            self.left_motor_aft = HubMotor(
+                'left_motor_aft',
+                radius, gear_ratio, poll_pairs, 10, self.can_socket,
+            )
 
         self.control_timer = Periodic(
             self.command_period_seconds, self.event_loop,
@@ -119,6 +135,9 @@ class TractorController:
 
         self.right_motor.send_velocity_command_rads(right)
         self.left_motor.send_velocity_command_rads(left)
+        if self.has_four_motors:
+            self.right_motor_aft.send_velocity_command_rads(right)
+            self.left_motor_aft.send_velocity_command_rads(left)
 
     def _servo(self):
         v, w = self.move_to_goal_controller.update(self.odom_pose_tractor)
@@ -187,6 +206,10 @@ class TractorController:
             self.tractor_state.target_unicycle_angular_velocity = 0.0
             self.right_motor.send_current_brake_command(brake_current)
             self.left_motor.send_current_brake_command(brake_current)
+            if self.has_four_motors:
+                self.right_motor_aft.send_current_brake_command(brake_current)
+                self.left_motor_aft.send_current_brake_command(brake_current)
+
             self.move_to_goal_controller.reset()
         elif steering_command.mode in (SteeringCommand.MODE_SERVO,):
             self._servo()
