@@ -4,6 +4,10 @@ import sys
 from collections import deque
 
 import numpy as np
+from google.protobuf.text_format import MessageToString
+from google.protobuf.timestamp_pb2 import Timestamp
+from liegroups import SE3
+
 from farm_ng.canbus import CANSocket
 from farm_ng.config import TractorConfigManager
 from farm_ng.controller import TractorMoveToGoalController
@@ -20,9 +24,6 @@ from farm_ng_proto.tractor.v1.geometry_pb2 import NamedSE3Pose
 from farm_ng_proto.tractor.v1.steering_pb2 import SteeringCommand
 from farm_ng_proto.tractor.v1.tractor_pb2 import TractorConfig
 from farm_ng_proto.tractor.v1.tractor_pb2 import TractorState
-from google.protobuf.text_format import MessageToString
-from google.protobuf.timestamp_pb2 import Timestamp
-from liegroups import SE3
 
 logger = logging.getLogger('tractor')
 logger.setLevel(logging.INFO)

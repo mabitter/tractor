@@ -1,12 +1,13 @@
 import argparse
 import os
 
+from google.protobuf.json_format import MessageToJson
+
 from farm_ng.blobstore import Blobstore
 from farm_ng_proto.tractor.v1.apriltag_pb2 import ApriltagConfig
 from farm_ng_proto.tractor.v1.apriltag_pb2 import TagConfig
 from farm_ng_proto.tractor.v1.resource_pb2 import BUCKET_CONFIGURATIONS
 from farm_ng_proto.tractor.v1.tractor_pb2 import TractorConfig
-from google.protobuf.json_format import MessageToJson
 
 
 def _in2m(inches: float) -> float:

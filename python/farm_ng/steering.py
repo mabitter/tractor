@@ -3,6 +3,7 @@ import sys
 import time
 
 import numpy as np
+
 from farm_ng.ipc import EventBus
 from farm_ng.ipc import get_event_bus
 from farm_ng.ipc import make_event

@@ -1,4 +1,3 @@
-# socket_multicast_receiver.py
 import asyncio
 import logging
 import re
@@ -12,15 +11,15 @@ from typing import Optional
 from typing import Pattern
 from typing import Set
 
+from google.protobuf.text_format import MessageToString
+from google.protobuf.timestamp_pb2 import Timestamp
+
+# loads all the protos for pretty print of any (isort:skip)
 import farm_ng.proto_utils  # noqa: F401
 from farm_ng.periodic import Periodic
 from farm_ng_proto.tractor.v1.io_pb2 import Announce
 from farm_ng_proto.tractor.v1.io_pb2 import Event
 from farm_ng_proto.tractor.v1.io_pb2 import Subscription
-from google.protobuf.text_format import MessageToString
-from google.protobuf.timestamp_pb2 import Timestamp
-
-# loads all the protos for pretty print of any
 
 logger = logging.getLogger('ipc')
 logger.setLevel(logging.INFO)
