@@ -164,55 +164,123 @@ class CruiseControlSteering(BaseSteering):
         return self.command
 
 
+class ServoControlSteering(BaseSteering):
+    def __init__(self, rate_hz, joystick):
+        super().__init__(rate_hz, SteeringCommand.MODE_SERVO)
+        self.w_acc = np.pi*10
+        self.joystick = joystick
+        # rate that the speed of the tractor changes when pressing the dpad up/down arrows
+        self.delta_x_vel = 0.25/self.rate_hz
+        # rate of angular velocity that occurs when nudging the tractor left/right with dpad left/right arrows
+        self.delta_angular_vel = 10/180*np.pi
+
+        # The target speed for cruise control
+        self.target_speed = 0.0
+        self.target_angular_velocity = 0.0
+
+    def stop(self):
+        self.target_speed = 0.0
+        self.target_angular_velocity = 0.0
+        super().stop()
+
+    def update(self):
+
+        self.command.brake = 0.0
+        self.command.deadman = 0.0
+        if self.joystick.get_axis_state('hat0y', 0.0) != 0:
+            # hat0y -1 is up dpad
+            # hat0y +1 is down dpad
+            inc_vel = -self.joystick.get_axis_state('hat0y', 0.0)*self.delta_x_vel
+            self.target_angular_velocity = 0.0
+
+            self.target_speed = np.clip(
+                self.target_speed + inc_vel,
+                -self.v_max, self.v_max,
+            )
+
+        if self.joystick.get_axis_state('hat0x', 0.0) != 0:
+            # hat0x -1 is left dpad
+            # hat0x +1 is right dpad
+            angular_vel = -self.joystick.get_axis_state('hat0x', 0.0)*self.delta_angular_vel
+            self.target_angular_velocity = angular_vel
+        else:
+            # angular velocity resets if left or right dpad is not pressed,
+            # so its like a nudge rather than cruise control.
+            self.target_angular_velocity = 0.0
+
+        self.update_vw(self.target_speed, self.target_angular_velocity)
+        # logger.info('servo control %f %f', self.command.velocity, self.command.angular_velocity)
+        return self.command
+
+
 class SteeringSenderJoystick:
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self.rate_hz = 50.0
         self.period = 1.0/self.rate_hz
-
-        # whether the tractor is executing a motion primitive (e.g. cruise control, indexing)
-        self._executing_motion_primitive = False
-
         self.joystick = MaybeJoystick('/dev/input/js0',  self._event_bus.event_loop())
         self.joystick.set_button_callback(self.on_button)
         self._periodic = Periodic(self.period, self._event_bus.event_loop(), self.send)
 
         self.joystick_manual_steer = JoystickManualSteering(self.rate_hz, self.joystick)
         self.cruise_control_steer = CruiseControlSteering(self.rate_hz, self.joystick)
+        self.servo_control_steer = ServoControlSteering(self.rate_hz, self.joystick)
         self.cruise_control_active = False
+        self.servo_active = False
+        self.new_goal = False
 
         self.stop()
 
     def _start_cruise_control(self):
+        if self.servo_active:
+            return
         if not self.cruise_control_active:
             self.cruise_control_steer.command.velocity = self.joystick_manual_steer.command.velocity
             self.cruise_control_steer.command.angular_velocity = self.joystick_manual_steer.command.angular_velocity
         self.cruise_control_active = True
 
+    def _start_servo(self):
+        self.new_goal = True
+        self.cruise_control_active = False
+        self.servo_active = True
+
     def stop(self):
+        self.servo_active = False
         self.cruise_control_active = False
         self.joystick_manual_steer.stop()
         self.cruise_control_steer.stop()
+        self.servo_control_steer.stop()
 
     def on_button(self, button, value):
         if button == 'touch' and value:
             self.stop()
 
+        if button == 'triangle' and value:
+            self._start_servo()
+
         if button in ('hat0x', 'hat0y') and value:
             self._start_cruise_control()
 
     def send(self, n_periods):
+        command = SteeringCommand()
         if n_periods > self.rate_hz:
             self.stop()
-            command = self.joystick_manual_steer.command
+            command.CopyFrom(self.joystick_manual_steer.command)
 
         if self.cruise_control_steer.cruise_control_axis_active():
             self._start_cruise_control()
 
         if self.cruise_control_active:
-            command = self.cruise_control_steer.update()
+            command.CopyFrom(self.cruise_control_steer.update())
+        elif self.servo_active:
+            command.CopyFrom(self.servo_control_steer.update())
+            if self.new_goal:
+                command.reset_goal = True
+                logger.info('reset goal')
+                self.new_goal = False
         else:
-            command = self.joystick_manual_steer.update()
+            command.CopyFrom(self.joystick_manual_steer.update())
+
         self._event_bus.send(make_event(_g_message_name, command))
 
 

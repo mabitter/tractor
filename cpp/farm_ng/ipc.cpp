@@ -23,8 +23,8 @@
 
 namespace farm_ng {
 using farm_ng_proto::tractor::v1::Announce;
-using farm_ng_proto::tractor::v1::Event;
 using farm_ng_proto::tractor::v1::BUCKET_LOGS;
+using farm_ng_proto::tractor::v1::Event;
 using farm_ng_proto::tractor::v1::LoggingCommand;
 using farm_ng_proto::tractor::v1::LoggingStatus;
 using farm_ng_proto::tractor::v1::Subscription;
@@ -499,6 +499,9 @@ void RequestStartCapturing(EventBus& bus,
                            TrackingCameraCommand_RecordStart_Mode mode) {
   TrackingCameraCommand command;
   command.mutable_record_start()->set_mode(mode);
+  RequestStartCapturing(bus, command);
+}
+void RequestStartCapturing(EventBus& bus, TrackingCameraCommand command) {
   LOG(INFO) << "RequestStartCapturing: "
             << farm_ng::MakeEvent("tracking_camera/command", command)
                    .ShortDebugString();

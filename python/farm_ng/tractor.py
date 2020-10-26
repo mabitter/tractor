@@ -39,7 +39,7 @@ class TimeSeriesItem:
 
 
 class TimeSeries:
-    def __init__(self, time_window=1.0):
+    def __init__(self, time_window=10.0):
         self._items = deque()
         self._time_window = time_window
 
@@ -112,8 +112,11 @@ class TractorController:
         if event.name == 'pose/tractor/base/goal':
             pose = NamedSE3Pose()
             event.data.Unpack(pose)
-            odom_pose_tractor, stamp = self.odom_poses_tractor.find_nearest(event.stamp)
             assert pose.frame_a == 'tractor/base'
+            odom_pose_tractor, stamp = self.odom_poses_tractor.find_nearest(event.stamp)
+            # now = Timestamp()
+            # now.GetCurrentTime()
+            # logger.info('Got goal: %f delayed', (now.ToMicroseconds() - event.stamp.ToMicroseconds())*1e-6)
             tractor_pose_goal = proto_to_se3(pose.a_pose_b)
             odom_pose_goal = odom_pose_tractor.dot(tractor_pose_goal)
             self.move_to_goal_controller.set_goal(odom_pose_goal)
@@ -135,8 +138,10 @@ class TractorController:
             self.right_motor_aft.send_velocity_command_rads(right)
             self.left_motor_aft.send_velocity_command_rads(left)
 
-    def _servo(self):
-        v, w = self.move_to_goal_controller.update(self.odom_pose_tractor)
+    def _servo(self, steering_command: SteeringCommand):
+        vel = max(steering_command.velocity, 0)
+        v, w = self.move_to_goal_controller.update(self.odom_pose_tractor, vel)
+        # logger.info('servoing: %f %f %f', vel, v, w)
         self._command_velocity(v, w)
 
     def _command_loop(self, n_periods):
@@ -214,7 +219,7 @@ class TractorController:
 
             self.move_to_goal_controller.reset()
         elif steering_command.mode in (SteeringCommand.MODE_SERVO,):
-            self._servo()
+            self._servo(steering_command)
         elif steering_command.mode in (SteeringCommand.MODE_JOYSTICK_MANUAL, SteeringCommand.MODE_JOYSTICK_CRUISE_CONTROL):
             self._command_velocity(steering_command.velocity, steering_command.angular_velocity)
         self.event_bus.send(make_event('tractor_state', self.tractor_state))

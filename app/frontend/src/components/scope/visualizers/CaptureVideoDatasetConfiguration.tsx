@@ -31,6 +31,15 @@ const CaptureVideoDatasetConfigurationForm: React.FC<FormProps<
           setValue((v) => ({ ...v, name }));
         }}
       />
+      <Form.Group
+        label="Detect Apriltags?"
+        checked={value.detectApriltags}
+        type="checkbox"
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+          const detectApriltags = Boolean(e.target.checked);
+          setValue((v) => ({ ...v, detectApriltags }));
+        }}
+      />
     </>
   );
 };
