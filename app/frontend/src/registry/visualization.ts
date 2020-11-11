@@ -24,6 +24,12 @@ import { CaptureVideoDatasetConfigurationVisualizer } from "../components/scope/
 import { CaptureVideoDatasetStatusVisualizer } from "../components/scope/visualizers/CaptureVideoDatasetStatus";
 import { CaptureVideoDatasetResultVisualizer } from "../components/scope/visualizers/CaptureVideoDatasetResult";
 import { ApriltagConfigVisualizer } from "../components/scope/visualizers/ApriltagConfig";
+import { CameraConfigVisualizer } from "../components/scope/visualizers/CameraConfig";
+import { TrackingCameraConfigVisualizer } from "../components/scope/visualizers/TrackingCameraConfig";
+import { CalibrateMultiViewApriltagRigConfigurationVisualizer } from "../components/scope/visualizers/CalibrateMultiViewApriltagRigConfiguration";
+import { CalibrateMultiViewApriltagRigResultVisualizer } from "../components/scope/visualizers/CalibrateMultiViewApriltagRigResult";
+import { CalibrateMultiViewApriltagRigStatusVisualizer } from "../components/scope/visualizers/CalibrateMultiViewApriltagRigStatus";
+import { MultiViewApriltagRigModelVisualizer } from "../components/scope/visualizers/MultiViewApriltagRigModel";
 
 export interface VisualizerOptionConfig {
   label: string;
@@ -55,6 +61,7 @@ export interface Visualizer<T extends EventType = EventType> {
   types: EventTypeId[] | "*";
   Element?: React.FC<SingleElementVisualizerProps<T>>;
   Form?: React.FC<FormProps<T>>;
+  Marker3D?: React.FC<SingleElementVisualizerProps<T>>;
 }
 
 export const visualizerRegistry: { [k: string]: Visualizer } = [
@@ -67,6 +74,10 @@ export const visualizerRegistry: { [k: string]: Visualizer } = [
   CalibrateBaseToCameraConfigurationVisualizer,
   CalibrateBaseToCameraResultVisualizer,
   CalibrateBaseToCameraStatusVisualizer,
+  CalibrateMultiViewApriltagRigConfigurationVisualizer,
+  CalibrateMultiViewApriltagRigResultVisualizer,
+  CalibrateMultiViewApriltagRigStatusVisualizer,
+  CameraConfigVisualizer,
   CaptureCalibrationDatasetConfigurationVisualizer,
   CaptureCalibrationDatasetResultVisualizer,
   CaptureCalibrationDatasetStatusVisualizer,
@@ -75,8 +86,10 @@ export const visualizerRegistry: { [k: string]: Visualizer } = [
   CaptureVideoDatasetStatusVisualizer,
   ImageVisualizer,
   MonocularApriltagRigModelVisualizer,
+  MultiViewApriltagRigModelVisualizer,
   NamedSE3PoseVisualizer,
   SteeringCommandVisualizer,
+  TrackingCameraConfigVisualizer,
   TrackingCameraPoseFrameVisualizer,
   TractorConfigVisualizer,
   // Low priority, should stay at the end of the list

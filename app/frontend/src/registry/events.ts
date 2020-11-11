@@ -16,6 +16,7 @@ import {
   CalibratorCommand,
   CalibratorStatus,
   MonocularApriltagRigModel,
+  MultiViewApriltagRigModel,
   ViewInitialization
 } from "../../genproto/farm_ng_proto/tractor/v1/calibrator";
 import {
@@ -29,7 +30,9 @@ import { SteeringCommand } from "../../genproto/farm_ng_proto/tractor/v1/steerin
 import {
   TrackingCameraPoseFrame,
   TrackingCameraMotionFrame,
-  TrackingCameraCommand
+  TrackingCameraCommand,
+  TrackingCameraConfig,
+  CameraConfig
 } from "../../genproto/farm_ng_proto/tractor/v1/tracking_camera";
 import {
   TractorConfig,
@@ -62,6 +65,11 @@ import {
   CalibrateBaseToCameraStatus
 } from "../../genproto/farm_ng_proto/tractor/v1/calibrate_base_to_camera";
 import { Event as BusEvent } from "../../genproto/farm_ng_proto/tractor/v1/io";
+import {
+  CalibrateMultiViewApriltagRigConfiguration,
+  CalibrateMultiViewApriltagRigResult,
+  CalibrateMultiViewApriltagRigStatus
+} from "../../genproto/farm_ng_proto/tractor/v1/calibrate_multi_view_apriltag_rig";
 
 export type EventType =
   | BusEvent
@@ -78,6 +86,8 @@ export type EventType =
   | Image
   | TractorConfig
   | ApriltagConfig
+  | TrackingCameraConfig
+  | CameraConfig
   | TagConfig
   | CalibrationParameter
   | ViewInitialization
@@ -91,6 +101,7 @@ export type EventType =
   | ApriltagRig
   | StopProgramRequest
   | MonocularApriltagRigModel
+  | MultiViewApriltagRigModel
   | BaseToCameraModel
   | BaseToCameraInitialization
   | CaptureCalibrationDatasetConfiguration
@@ -104,7 +115,10 @@ export type EventType =
   | CalibrateApriltagRigResult
   | CalibrateBaseToCameraConfiguration
   | CalibrateBaseToCameraStatus
-  | CalibrateBaseToCameraResult;
+  | CalibrateBaseToCameraResult
+  | CalibrateMultiViewApriltagRigConfiguration
+  | CalibrateMultiViewApriltagRigStatus
+  | CalibrateMultiViewApriltagRigResult;
 
 // Infer the keys, but restrict values to Message<EventType>
 // https://stackoverflow.com/a/54598743
@@ -128,6 +142,8 @@ export const eventRegistry = inferKeys({
   "type.googleapis.com/farm_ng_proto.tractor.v1.Image": Image,
   "type.googleapis.com/farm_ng_proto.tractor.v1.TractorConfig": TractorConfig,
   "type.googleapis.com/farm_ng_proto.tractor.v1.ApriltagConfig": ApriltagConfig,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.TrackingCameraConfig": TrackingCameraConfig,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CameraConfig": CameraConfig,
   "type.googleapis.com/farm_ng_proto.tractor.v1.TagConfig": TagConfig,
   "type.googleapis.com/farm_ng_proto.tractor.v1.ViewInitialization": ViewInitialization,
   "type.googleapis.com/farm_ng_proto.tractor.v1.BaseToCameraInitialization": BaseToCameraInitialization,
@@ -138,6 +154,7 @@ export const eventRegistry = inferKeys({
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibratorStatus": CalibratorStatus,
   "type.googleapis.com/farm_ng_proto.tractor.v1.LoggingStatus": LoggingStatus,
   "type.googleapis.com/farm_ng_proto.tractor.v1.MonocularApriltagRigModel": MonocularApriltagRigModel,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.MultiViewApriltagRigModel": MultiViewApriltagRigModel,
   "type.googleapis.com/farm_ng_proto.tractor.v1.BaseToCameraModel": BaseToCameraModel,
   "type.googleapis.com/farm_ng_proto.tractor.v1.ProgramSupervisorStatus": ProgramSupervisorStatus,
   "type.googleapis.com/farm_ng_proto.tractor.v1.StartProgramRequest": StartProgramRequest,
@@ -153,7 +170,10 @@ export const eventRegistry = inferKeys({
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigResult": CalibrateApriltagRigResult,
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraConfiguration": CalibrateBaseToCameraConfiguration,
   "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraStatus": CalibrateBaseToCameraStatus,
-  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraResult": CalibrateBaseToCameraResult
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateBaseToCameraResult": CalibrateBaseToCameraResult,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateMultiViewApriltagRigConfiguration": CalibrateMultiViewApriltagRigConfiguration,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateMultiViewApriltagRigStatus": CalibrateMultiViewApriltagRigStatus,
+  "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateMultiViewApriltagRigResult": CalibrateMultiViewApriltagRigResult
 });
 
 export const eventTypeIds = Object.keys(

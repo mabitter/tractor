@@ -271,17 +271,18 @@ class EventBusImpl {
     }
   }
 
-  void send_event(const Event& event) {
+  void send_event(Event event) {
     auto recipient_list = recipients(event);
     if (recipient_list.empty()) {
       return;
     }
-
-    event.SerializeToString(&event_message_);
-    CHECK_LT(int(event_message_.size()), max_datagram_size)
+    std::string event_message;
+    event.SerializeToString(&event_message);
+    CHECK_LT(int(event_message.size()), max_datagram_size)
         << "Event is too big, doesn't fit in one udp packet.";
     for (const auto& recipient : recipient_list) {
-      socket_.send_to(boost::asio::buffer(event_message_), recipient);
+      std::lock_guard<std::mutex> lock(send_mtx_);
+      socket_.send_to(boost::asio::buffer(event_message), recipient);
     }
   }
 
@@ -312,6 +313,7 @@ class EventBusImpl {
     }
     return result;
   }
+  std::mutex send_mtx_;
 
   boost::asio::ip::udp::socket socket_;
   boost::asio::deadline_timer announce_timer_;
@@ -320,7 +322,7 @@ class EventBusImpl {
   boost::asio::ip::udp::endpoint sender_endpoint_;
   char data_[max_datagram_size];
   std::string announce_message_;
-  std::string event_message_;
+
   std::string service_name_ = "unknown [cpp-ipc]";
   std::vector<Subscription> subscriptions_;
 
@@ -367,7 +369,22 @@ void EventBus::AddSubscriptions(const std::vector<std::string>& names) {
                  });
   return AddSubscriptions(subscriptions);
 }
-void EventBus::Send(const Event& event) { impl_->send_event(event); }
+void EventBus::Send(Event event) {
+  // Use dispatch to make this function thread safe. If Send is called from
+  // io_service itself.
+  // get_io_service().dispatch([this, event = std::move(event)] {
+  impl_->send_event(std::move(event));
+  //});
+}
+
+void EventBus::AsyncSend(Event event) {
+  // Use dispatch to make this function thread safe. If Send is called from
+  // io_service itself.
+  get_io_service().dispatch([this, event = std::move(event)] {
+    impl_->send_event(std::move(event));
+  });
+}
+
 void EventBus::SetName(const std::string& name) { impl_->set_name(name); }
 std::string EventBus::GetName() { return impl_->get_name(); }
 

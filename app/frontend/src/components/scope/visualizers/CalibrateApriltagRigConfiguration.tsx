@@ -17,6 +17,7 @@ import { useFormState } from "../../../hooks/useFormState";
 import Form from "./Form";
 import { Resource } from "../../../../genproto/farm_ng_proto/tractor/v1/resource";
 import { CaptureCalibrationDatasetResultVisualizer } from "./CaptureCalibrationDatasetResult";
+import { RepeatedIntForm } from "./RepeatedIntForm";
 
 CaptureCalibrationDatasetResultVisualizer.Element;
 
@@ -24,8 +25,6 @@ const CalibrateApriltagRigConfigurationForm: React.FC<FormProps<
   CalibrateApriltagRigConfiguration
 >> = (props) => {
   const [value, setValue] = useFormState(props);
-
-  console.log(value);
 
   return (
     <>
@@ -41,47 +40,19 @@ const CalibrateApriltagRigConfigurationForm: React.FC<FormProps<
             calibrationDataset: Resource.fromPartial({
               path,
               contentType:
-                "application/json; type=type.googleapis.com/farm_ng_proto.tractor.v1.CaptureCalibrationDatasetResult"
+                "application/json; type=type.googleapis.com/farm_ng_proto.tractor.v1.CaptureVideoDatasetResult"
             })
           }));
         }}
       />
-      <h6>Tag IDs</h6>
-      {value.tagIds.map((tagId, index) => (
-        <React.Fragment key={index}>
-          <Form.Group
-            label={`Tag ID ${index}`}
-            value={tagId}
-            type="number"
-            onChange={(e) => {
-              const tagId = parseInt(e.target.value);
-              setValue((v) => ({
-                ...v,
-                tagIds: Object.assign([...v.tagIds], { [index]: tagId })
-              }));
-            }}
-          />
-          <Form.ButtonGroup
-            buttonText="X"
-            onClick={() =>
-              setValue((v) => ({
-                ...v,
-                tagIds: [
-                  ...v.tagIds.slice(0, index),
-                  ...v.tagIds.slice(index + 1)
-                ]
-              }))
-            }
-          />
-        </React.Fragment>
-      ))}
 
-      <Form.ButtonGroup
-        buttonText="+"
-        onClick={() =>
+      <h6>Tag IDs</h6>
+      <RepeatedIntForm
+        initialValue={value.tagIds}
+        onChange={(updated) =>
           setValue((v) => ({
             ...v,
-            tagIds: [...v.tagIds, 0]
+            tagIds: updated
           }))
         }
       />
@@ -105,6 +76,26 @@ const CalibrateApriltagRigConfigurationForm: React.FC<FormProps<
           setValue((v) => ({ ...v, rootTagId }));
         }}
       />
+
+      <Form.Group
+        label="Filter stable tags?"
+        checked={value.filterStableTags}
+        type="checkbox"
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+          const filterStableTags = Boolean(e.target.checked);
+          setValue((v) => ({ ...v, filterStableTags }));
+        }}
+      />
+
+      <Form.Group
+        label="Camera Name"
+        value={value.cameraName}
+        type="text"
+        onChange={(e) => {
+          const cameraName = e.target.value;
+          setValue((v) => ({ ...v, cameraName }));
+        }}
+      />
     </>
   );
 };
@@ -117,7 +108,7 @@ const CalibrateApriltagRigConfigurationElement: React.FC<SingleElementVisualizer
     resources
   } = props;
 
-  const { tagIds, rootTagId, name } = value;
+  const { tagIds, rootTagId, name, filterStableTags, cameraName } = value;
 
   const calibrationDataset = useFetchResource<CaptureCalibrationDatasetResult>(
     value.calibrationDataset,
@@ -131,7 +122,9 @@ const CalibrateApriltagRigConfigurationElement: React.FC<SingleElementVisualizer
           records={[
             ["Name", name],
             ["Tag IDs", (tagIds || []).join(", ")],
-            ["Root Tag ID", rootTagId]
+            ["Root Tag ID", rootTagId],
+            ["Filter Stable Tags?", filterStableTags],
+            ["Camera Name", cameraName]
           ]}
         />
       </Card>

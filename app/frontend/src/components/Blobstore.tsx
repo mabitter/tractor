@@ -37,7 +37,7 @@ const bestGuessEventType = (
   selectedPath: string
 ): EventTypeId | undefined => {
   if (folderChain.map((_) => _.name).includes("apriltag_rig_models")) {
-    return "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateApriltagRigResult";
+    return "type.googleapis.com/farm_ng_proto.tractor.v1.CalibrateMultiViewApriltagRigResult";
   }
   if (folderChain.map((_) => _.name).includes("configurations")) {
     if (selectedPath.endsWith("tractor.json")) {
@@ -45,6 +45,9 @@ const bestGuessEventType = (
     }
     if (selectedPath.endsWith("apriltag.json")) {
       return "type.googleapis.com/farm_ng_proto.tractor.v1.ApriltagConfig";
+    }
+    if (selectedPath.endsWith("camera.json")) {
+      return "type.googleapis.com/farm_ng_proto.tractor.v1.TrackingCameraConfig";
     }
   }
   if (folderChain.map((_) => _.name).includes("base_to_camera_models")) {

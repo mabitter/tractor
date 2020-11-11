@@ -7,6 +7,7 @@
 #include <glog/logging.h>
 
 #include "farm_ng/blobstore.h"
+#include "farm_ng/calibration/apriltag.h"
 #include "farm_ng/calibration/apriltag_rig_calibrator.h"
 #include "farm_ng/event_log_reader.h"
 #include "farm_ng/init.h"
@@ -16,6 +17,7 @@
 #include "farm_ng_proto/tractor/v1/calibrate_apriltag_rig.pb.h"
 #include "farm_ng_proto/tractor/v1/calibrator.pb.h"
 #include "farm_ng_proto/tractor/v1/capture_calibration_dataset.pb.h"
+#include "farm_ng_proto/tractor/v1/capture_video_dataset.pb.h"
 
 DEFINE_bool(interactive, false, "receive program args via eventbus");
 DEFINE_string(calibration_dataset, "",
@@ -28,6 +30,10 @@ DEFINE_int32(
     root_tag_id, -1,
     "The root tag id, -1 will result in root_tag_id == first value in tag_ids");
 
+DEFINE_bool(filter_stable_tags, false, "Run filter for stable tags.");
+DEFINE_string(camera_name, "tracking_camera/front/left",
+              "Which camera to run on.");
+
 typedef farm_ng_proto::tractor::v1::Event EventPb;
 using farm_ng_proto::tractor::v1::ApriltagDetections;
 using farm_ng_proto::tractor::v1::BUCKET_APRILTAG_RIG_MODELS;
@@ -35,16 +41,12 @@ using farm_ng_proto::tractor::v1::CalibrateApriltagRigConfiguration;
 using farm_ng_proto::tractor::v1::CalibrateApriltagRigResult;
 using farm_ng_proto::tractor::v1::CalibrateApriltagRigStatus;
 using farm_ng_proto::tractor::v1::CaptureCalibrationDatasetResult;
+using farm_ng_proto::tractor::v1::CaptureVideoDatasetResult;
+
 using farm_ng_proto::tractor::v1::MonocularApriltagRigModel;
 using farm_ng_proto::tractor::v1::Subscription;
 
 namespace farm_ng {
-
-namespace {
-bool is_calibration_event(const std::string& s) {
-  return s.rfind("calibrator/", 0) == 0;
-}
-}  // namespace
 
 class CalibrateApriltagRigProgram {
  public:
@@ -63,6 +65,10 @@ class CalibrateApriltagRigProgram {
     on_timer(boost::system::error_code());
   }
 
+  bool is_calibration_event(const std::string& s) {
+    return s.rfind(configuration_.camera_name() + "/apriltags", 0) == 0;
+  }
+
   void OnLogEvent(const EventPb& event, ApriltagRigCalibrator* calibrator) {
     if (!is_calibration_event(event.name())) {
       return;
@@ -71,13 +77,19 @@ class CalibrateApriltagRigProgram {
     if (!event.data().UnpackTo(&detections)) {
       return;
     }
-    calibrator->AddFrame(detections);
+    bool add_frame = true;
+    if (configuration_.filter_stable_tags()) {
+      add_frame = tag_filter_.AddApriltags(detections);
+    }
+    if (add_frame) {
+      calibrator->AddFrame(detections);
+    }
   }
 
   // reads the event log from the CalibrationDatasetResult, and
   // populates a MonocularApriltagRigModel to be solved.
-  ApriltagRigModel LoadCalibrationDataset(
-      const CaptureCalibrationDatasetResult& dataset_result) {
+  template <typename DatasetType>
+  ApriltagRigModel LoadCalibrationDataset(const DatasetType& dataset_result) {
     EventLogReader log_reader(dataset_result.dataset());
     ApriltagRigCalibrator calibrator(configuration_);
     while (true) {
@@ -99,17 +111,18 @@ class CalibrateApriltagRigProgram {
     }
     LOG(INFO) << "config:\n" << configuration_.DebugString();
 
-    auto dataset_result =
-        ReadProtobufFromResource<CaptureCalibrationDatasetResult>(
-            configuration_.calibration_dataset());
+    auto dataset_result = ReadProtobufFromResource<CaptureVideoDatasetResult>(
+        configuration_.calibration_dataset());
     LOG(INFO) << "dataset_result:\n" << dataset_result.DebugString();
 
     auto output_dir =
         boost::filesystem::path(dataset_result.dataset().path()).parent_path();
 
     // Output under the same directory as the dataset.
-    SetArchivePath((output_dir / "apriltag_rig_model").string());
+    SetArchivePath(
+        (output_dir / "apriltag_rig_model" / configuration_.camera_name()).string());
     ApriltagRigModel model = LoadCalibrationDataset(dataset_result);
+    LOG(INFO) << "Initial model computed.";
 
     MonocularApriltagRigModel initial_model_pb;
     model.ToMonocularApriltagRigModel(&initial_model_pb);
@@ -197,6 +210,8 @@ class CalibrateApriltagRigProgram {
   CalibrateApriltagRigConfiguration configuration_;
   CalibrateApriltagRigStatus status_;
   CalibrateApriltagRigResult result_;
+
+  ApriltagsFilter tag_filter_;
 };
 
 }  // namespace farm_ng
@@ -212,9 +227,11 @@ int Main(farm_ng::EventBus& bus) {
   }
   config.mutable_calibration_dataset()->set_path(FLAGS_calibration_dataset);
   config.mutable_calibration_dataset()->set_content_type(
-      farm_ng::ContentTypeProtobufJson<CaptureCalibrationDatasetResult>());
+      farm_ng::ContentTypeProtobufJson<CaptureVideoDatasetResult>());
   config.set_root_tag_id(FLAGS_root_tag_id);
   config.set_name(FLAGS_name);
+  config.set_filter_stable_tags(FLAGS_filter_stable_tags);
+  config.set_camera_name(FLAGS_camera_name);
 
   farm_ng::CalibrateApriltagRigProgram program(bus, config, FLAGS_interactive);
   return program.run();
