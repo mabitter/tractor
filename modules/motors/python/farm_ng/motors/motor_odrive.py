@@ -265,8 +265,8 @@ def main():
             )
         x += 1.0/command_rate_hz
 
-        right_motor.set_input_velocity(1)  # -math.sin(x)*10)
-        left_motor.set_input_velocity(1)  # math.sin(x)*10)
+        right_motor.set_input_velocity(0)  # -math.sin(x/4)*1.5)
+        left_motor.set_input_velocity(0)  # math.sin(x/4)*1.5)
         count[0] += 1
 
     loop.add_reader(can_socket, lambda: can_socket.recv())
