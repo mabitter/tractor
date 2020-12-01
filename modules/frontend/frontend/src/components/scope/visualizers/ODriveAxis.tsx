@@ -18,6 +18,7 @@ const ODriveAxisComponent: React.FC<VisualizerProps<ODriveAxis>> = ({
     values.map(([_, v]) => v.encoderPositionEstimate || 0),
     values.map(([_, v]) => v.encoderVelocityEstimate || 0),
     values.map(([_, v]) => v.inputVelocity || 0),
+    values.map(([_, v]) => v.currentState || 0),
   ];
 
   const colors = colorGenerator();
@@ -32,6 +33,10 @@ const ODriveAxisComponent: React.FC<VisualizerProps<ODriveAxis>> = ({
         label,
         stroke: colors.next().value,
       })),
+      {
+        label: "state",
+        value: (_: unknown, v: number) => StateToJSON(v),
+      },
     ],
   };
 
