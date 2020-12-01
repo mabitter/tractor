@@ -191,14 +191,13 @@ def configure_canbus(drive):
     my_drive.can.set_baud_rate(500000)
 
 
-def setup_thermistor(drive):
+def setup_thermistor(drive): #WIP 
+    # TODO | (mabitter) - get this to actually work based on odrive calibration routine and thermistor spec
     # Setup Motor Thermistor
     my_drive.axis0.motor_thermistor.config.enabled = True
     my_drive.axis0.motor_thermistor.config.temp_limit_lower = 32
     my_drive.axis0.motor_thermistor.config.temp_limit_upper = 120
     my_drive.axis0.motor_thermistor.config.gpio_pin = 1
-    my_drive.axis0.motor_thermistor
-
     my_drive.axis1.motor_thermistor.config.gpio_pin = 2
 
 
@@ -255,13 +254,14 @@ configure_encoder(my_drive.axis1)
 calibrate_motor(my_drive.axis1)
 calibrate_encoder(my_drive.axis1)
 
-# mirror_axis(my_drive.axis0, my_drive.axis1)
+mirror_axis(my_drive.axis0, my_drive.axis1)
+configure_canbus(my_drive)
 
 save_configuration(my_drive)
 print('saving configuration & exiting')
 
-
-print('if motor did not go both directions during calibration, run the script again')
+# from a default config, a reboot will be required for system params to take effect before calibration
+print('if motor did not go both directions during calibration, reboot odrive and run the script again')
 sys.exit()
 
 # CONNECT TO ODRIVE
