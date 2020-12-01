@@ -179,19 +179,21 @@ def save_configuration(drive):
     drive.save_configuration()
 
 
-def configure_canbus(drive):
+def configure_starboard_canbus(drive):
     # STARBOARD setup CANbus controller
     my_drive.axis0.config.can_node_id = 20
     my_drive.axis1.config.can_node_id = 21
     my_drive.can.set_baud_rate(500000)
 
+
+def configure_portside_canbus(drive):
     # PORTSIDE setup CAN controller
     my_drive.axis0.config.can_node_id = 10
     my_drive.axis1.config.can_node_id = 11
     my_drive.can.set_baud_rate(500000)
 
 
-def setup_thermistor(drive): #WIP 
+def setup_thermistor(drive):  # WIP
     # TODO | (mabitter) - get this to actually work based on odrive calibration routine and thermistor spec
     # Setup Motor Thermistor
     my_drive.axis0.motor_thermistor.config.enabled = True
@@ -216,7 +218,7 @@ axis.trap_traj.config.decel_limit = 150 # tested up to 150
 '''
 
 
-###### to do list ########
+###### TODOS ########
 # TODO | thermistor - create a voltage divider circuit solution for the 4 thermistors and integration
 # TODO | wire the starboard side motors backwards to reverse the direction
 # DONE | tune motors to get better holding torque (ramp gain more quickly)
@@ -230,6 +232,8 @@ axis.trap_traj.config.decel_limit = 150 # tested up to 150
 # TODO | investigate bug when swithing control modes that cases the drive to error out.
 
 
+####### MAIN #######
+
 # CONNECT TO ODRIVE
 # Find a connected ODrive (this will block until you connect one)
 print('finding an odrive...')
@@ -237,6 +241,17 @@ my_drive = odrive.find_any()
 
 # Find an ODrive that is connected on the serial port /dev/ttyUSB0
 # my_drive = odrive.find_any("serial:/dev/ttyUSB0")
+
+# Pass Arguments
+if len(sys.argv) <= 1:
+    print('for CANbus configuration, please call "port" or "starboard" when running script')
+    boo = input('would you like to continue? y/n \n')
+    print(boo)
+    if boo == 'y':
+        pass
+    else:
+        exit('okay call "port" or "starboard" when running script')
+
 
 # CONFIGURE ODRIVE & AXES
 
@@ -255,7 +270,12 @@ calibrate_motor(my_drive.axis1)
 calibrate_encoder(my_drive.axis1)
 
 mirror_axis(my_drive.axis0, my_drive.axis1)
-configure_canbus(my_drive)
+
+truck = str(sys.argv[1])
+if truck == "starboard":
+    configure_starboard_canbus(my_drive)
+if truck == "port":
+    configure_portside_canbus(my_drive)
 
 save_configuration(my_drive)
 print('saving configuration & exiting')
