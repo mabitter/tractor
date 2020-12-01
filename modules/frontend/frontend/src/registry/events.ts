@@ -63,6 +63,7 @@ import {
   CalibrateMultiViewApriltagRigResult,
   CalibrateMultiViewApriltagRigStatus,
 } from "@farm-ng/genproto-calibration/farm_ng/calibration/calibrate_multi_view_apriltag_rig";
+import { ODriveAxis } from "@farm-ng/genproto-motors/farm_ng/motors/motor";
 
 export type EventType =
   | Announce
@@ -95,6 +96,7 @@ export type EventType =
   | MotorControllerState
   | MultiViewApriltagRigModel
   | NamedSE3Pose
+  | ODriveAxis
   | ProgramSupervisorStatus
   | SE3Pose
   | StartProgramRequest
@@ -139,6 +141,7 @@ export const eventRegistry = inferKeys({
   "type.googleapis.com/farm_ng.frontend.ProgramSupervisorStatus": ProgramSupervisorStatus,
   "type.googleapis.com/farm_ng.frontend.StartProgramRequest": StartProgramRequest,
   "type.googleapis.com/farm_ng.frontend.StopProgramRequest": StopProgramRequest,
+  "type.googleapis.com/farm_ng.motors.ODriveAxis": ODriveAxis,
   "type.googleapis.com/farm_ng.perception.ApriltagConfig": ApriltagConfig,
   "type.googleapis.com/farm_ng.perception.ApriltagDetections": ApriltagDetections,
   "type.googleapis.com/farm_ng.perception.ApriltagRig": ApriltagRig,
