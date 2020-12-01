@@ -101,15 +101,20 @@ def configure_encoder(axis):
     # axis.motor.config.requested_current_range = 25
     axis.motor.config.current_control_bandwidth = 100
 
-    # Encoder Counter Per Revolution
-    # Hall-effect sensors CPR is determined by :
-    # 6 states for every pole in the motor... so 6 * pole-pairs (8)
-    # 6 states * 8 pholes = CPR, then with the gear ratio of 29.90972222 we are at
-
     # print('setting encoder mode, CPR, and index ')
     axis.encoder.config.mode = ENCODER_MODE_HALL
     axis.encoder.config.cpr = 6 * 8
     axis.encoder.config.use_index = False
+
+    # Calculating Velocity
+    # motor is commanded in motor turns per second (before gear ratio)
+    # gear ratio is 29.909722222 : 1 (motor rotations to wheel rotations)
+    # wheel circumference = 866.2628mm to the inside of the nubs on the tracks
+    # 1 meter = 1.154384152 rotations of the wheel ( 1000mm / 866.2628 mm ) 
+    # 1 meter = 34.527309336 rotations of the motor 
+    # (1.154384152 wheel rotations per meter × 29.909722222 gear ratio)
+    # velocity will be correctly commanded as : (meters per second) * 34.527309336 
+    # encoder (hall sensors) cpr is abstracted out, however it is pole pairs (8) * 6 states = 48
 
 
 def configure_startup(axis):
@@ -256,19 +261,16 @@ if len(sys.argv) <= 1:
 # CONFIGURE ODRIVE & AXES
 
 setup_odrive(my_drive)
-
 configure_startup(my_drive.axis0)
 configure_motor(my_drive.axis0)
 configure_encoder(my_drive.axis0)
 calibrate_motor(my_drive.axis0)
 calibrate_encoder(my_drive.axis0)
-
 configure_startup(my_drive.axis1)
 configure_motor(my_drive.axis1)
 configure_encoder(my_drive.axis1)
 calibrate_motor(my_drive.axis1)
 calibrate_encoder(my_drive.axis1)
-
 mirror_axis(my_drive.axis0, my_drive.axis1)
 
 truck = str(sys.argv[1])
