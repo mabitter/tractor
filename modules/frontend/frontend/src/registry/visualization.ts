@@ -26,6 +26,7 @@ import { CalibrateMultiViewApriltagRigConfigurationVisualizer } from "../compone
 import { CalibrateMultiViewApriltagRigResultVisualizer } from "../components/scope/visualizers/CalibrateMultiViewApriltagRigResult";
 import { CalibrateMultiViewApriltagRigStatusVisualizer } from "../components/scope/visualizers/CalibrateMultiViewApriltagRigStatus";
 import { MultiViewApriltagRigModelVisualizer } from "../components/scope/visualizers/MultiViewApriltagRigModel";
+import { ODriveAxisVisualizer } from "../components/scope/visualizers/ODriveAxis";
 
 export interface VisualizerOptionConfig {
   label: string;
@@ -74,6 +75,7 @@ export const visualizerRegistry: { [k: string]: Visualizer } = [
   CalibrateMultiViewApriltagRigResultVisualizer,
   CalibrateMultiViewApriltagRigStatusVisualizer,
   CameraConfigVisualizer,
+  CameraPipelineConfigVisualizer,
   CaptureVideoDatasetConfigurationVisualizer,
   CaptureVideoDatasetResultVisualizer,
   CaptureVideoDatasetStatusVisualizer,
@@ -81,8 +83,8 @@ export const visualizerRegistry: { [k: string]: Visualizer } = [
   MonocularApriltagRigModelVisualizer,
   MultiViewApriltagRigModelVisualizer,
   NamedSE3PoseVisualizer,
+  ODriveAxisVisualizer,
   SteeringCommandVisualizer,
-  CameraPipelineConfigVisualizer,
   TractorConfigVisualizer,
   // Low priority, should stay at the end of the list
   JSONVisualizer,
