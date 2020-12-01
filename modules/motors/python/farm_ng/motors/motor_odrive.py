@@ -14,6 +14,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from farm_ng.core.ipc import get_event_bus
 from farm_ng.core.ipc import make_event
+from farm_ng.core.periodic import Periodic
 from farm_ng.motors import motor_pb2
 # from farm_ng.tractor import motor_pb2
 from farm_ng.motors.canbus import CANSocket
@@ -37,6 +38,11 @@ def HeartBeatToProto(fields, odrive_axis: motor_pb2.ODriveAxis):
     odrive_axis.current_state = fields['current_state']
 
 
+def EncoderEstimatesToProto(fields, odrive_axis: motor_pb2.ODriveAxis):
+    odrive_axis.encoder_position_estimate.value = fields['encoder_pos_estimate']
+    odrive_axis.encoder_velocity_estimate.value = fields['encoder_vel_estimate']
+
+
 # Taken from https://github.com/madcowswe/ODrive/blob/devel/tools/odrive/tests/can_test.py
 #
 # Each argument is described as tuple (name, format, scale).
@@ -50,7 +56,7 @@ command_set = {
     'set_node_id': (0x006, [('node_id', 'I', 1)]),  # tested
     'set_requested_state': (0x007, [('requested_state', 'I', 1)]),  # tested
     # 0x008 not yet implemented
-    'get_encoder_estimates': (0x009, [('encoder_pos_estimate', 'f', 1), ('encoder_vel_estimate', 'f', 1)]),  # partially tested
+    'get_encoder_estimates': (0x009, [('encoder_pos_estimate', 'f', 1), ('encoder_vel_estimate', 'f', 1)], EncoderEstimatesToProto),  # partially tested
     'get_encoder_count': (0x00a, [('encoder_shadow_count', 'i', 1), ('encoder_count', 'i', 1)]),  # partially tested
     'set_controller_modes': (0x00b, [('control_mode', 'i', 1), ('input_mode', 'i', 1)]),  # tested
     'set_input_pos': (0x00c, [('input_pos', 'f', 1), ('vel_ff', 'h', 0.001), ('torque_ff', 'h', 0.001)]),  # tested
@@ -113,7 +119,15 @@ class HubMotor:
         self.can_socket = can_socket
         self._event_bus = get_event_bus(self.name)
         self._latest_state = motor_pb2.ODriveAxis()
+        self._request_period_seconds = 1.0/50.0
+        self._request_timer = Periodic(
+            self._request_period_seconds, self._event_bus.event_loop(),
+            self._request_loop, name='%s/request_loop' % name,
+        )
         self.can_socket.add_reader(self._handle_can_message)
+
+    def _request_loop(self, n_periods):
+        self.get_encoder_estimates()
 
     def _handle_can_message(self, cob_id, data, stamp):
         can_node_id = ((cob_id >> 5) & 0b111111)  # upper 6 bits
@@ -131,8 +145,9 @@ class HubMotor:
         #logger.info('can node id %02d %s', can_node_id, msg)
         self._latest_state.stamp.CopyFrom(stamp)
 
-        # event = make_event('%s/state' % self.name, self._latest_state, stamp=self._latest_state.stamp)
-        # self._event_bus.send(event)
+        if (parser.cmd_name == "get_encoder_estimates"):
+            event = make_event('%s/state' % self.name, self._latest_state, stamp=self._latest_state.stamp)
+            self._event_bus.send(event)
 
     def _send_can_command(self, cmd_name, is_request=False, **kwargs):
         cmd_spec = command_set[cmd_name]
@@ -150,9 +165,17 @@ class HubMotor:
         self.can_socket.send(cob_id, data, flags=socket.CAN_RTR_FLAG if is_request else 0)
 
     def _send_can_request(self, cmd_name, **kwargs):
-        self._send_can_command(cmd_name, is_request=True, **kwargs)
+        cmd_spec = command_set[cmd_name]
+        cmd_id = cmd_spec[0]
+        cob_id = int(self.can_node_id << 5) | cmd_id
+        self.can_socket.send(cob_id, bytes([]), flags=socket.CAN_RTR_FLAG)
+
+    def get_encoder_estimates(self):
+
+        self._send_can_request('get_encoder_estimates')
 
     def set_input_velocity(self, vel):
+        self._latest_state.input_velocity.value = vel
         self._send_can_command('set_input_vel', input_vel=vel, torque_ff=0.0)
 
     def set_requested_state(self, state: motor_pb2.ODriveAxis.State):
@@ -170,7 +193,7 @@ class HubMotor:
 
 def main():
 
-    command_rate_hz = 10
+    command_rate_hz = 50
     command_period_seconds = 1.0 / command_rate_hz
     # rtc=False means a monotonic clock for realtime loop as it won't
     # be adjusted by the system admin
@@ -205,7 +228,7 @@ def main():
     )
     motors = [right_motor, right_motor_aft, left_motor, left_motor_aft]
 
-    if False:
+    if True:
         print('reboot')
         for motor in motors:
             motor.reboot()
@@ -214,16 +237,16 @@ def main():
 
         print('rebooted')
 
+    left_motor.set_input_velocity(0)
+    right_motor.set_input_velocity(0)
+
     if True:
         for motor in motors:
             motor.clear_errors()
         for motor in motors:
-            motor.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
+            motor.set_requested_state(motor_pb2.ODriveAxis.STATE_CLOSED_LOOP_CONTROL)
 
     count = [0]
-
-    left_motor.set_input_velocity(0)
-    right_motor.set_input_velocity(0)
 
     global x
     x = 0
@@ -231,6 +254,7 @@ def main():
     def command_loop():
         global x
         periodic.read()
+
         if count[0] % (2*command_rate_hz) == 0:
             logger.info(
                 '\nright: %s\nleft: %s\nright_aft: %s\nleft_aft: %s',
@@ -241,11 +265,8 @@ def main():
             )
         x += 1.0/command_rate_hz
 
-        # right_motor.set_input_velocity(math.sin(x/4)*6)
-        # left_motor.set_input_velocity(math.cos(x/4)*6)
-        # right_motor_aft.send_velocity_command(0.0)
-
-        # left_motor_aft.send_velocity_command(0.0)
+        right_motor.set_input_velocity(1)  # -math.sin(x)*10)
+        left_motor.set_input_velocity(1)  # math.sin(x)*10)
         count[0] += 1
 
     loop.add_reader(can_socket, lambda: can_socket.recv())
