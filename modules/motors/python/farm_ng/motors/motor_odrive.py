@@ -113,8 +113,11 @@ g_odrive_parsers = make_parsers()
 
 class HubMotor:
     def __init__(
-            self, name,  can_node_id, can_socket):
+            self, name,  can_node_id, can_socket, radius=1.0, gear_ratio=1.0, invert=False):
         self.name = name
+        self.radius = radius
+        self.gear_ratio = gear_ratio
+        self.invert = invert
         self.can_node_id = can_node_id
         self.can_socket = can_socket
         self._event_bus = get_event_bus(self.name)
@@ -141,11 +144,16 @@ class HubMotor:
             )
             return
 
-        msg = parser.parse(data, self._latest_state)
+        parser.parse(data, self._latest_state)
+
         #logger.info('can node id %02d %s', can_node_id, msg)
         self._latest_state.stamp.CopyFrom(stamp)
 
         if (parser.cmd_name == "get_encoder_estimates"):
+            if self.invert:
+                self._latest_state.encoder_position_estimate.value = -self._latest_state.encoder_position_estimate.value
+                self._latest_state.encoder_velocity_estimate.value = -self._latest_state.encoder_velocity_estimate.value
+
             event = make_event('%s/state' % self.name, self._latest_state, stamp=self._latest_state.stamp)
             self._event_bus.send(event)
 
@@ -175,8 +183,22 @@ class HubMotor:
         self._send_can_request('get_encoder_estimates')
 
     def set_input_velocity(self, vel):
+        # vel in turns/second
         self._latest_state.input_velocity.value = vel
+
+        if self.invert:
+            vel = -vel
         self._send_can_command('set_input_vel', input_vel=vel, torque_ff=0.0)
+
+    def set_input_velocity_rads(self, vel):
+        vel_turns = vel/(2*math.pi)
+        self.set_input_velocity(vel_turns*self.gear_ratio)
+
+    def velocity_rads(self):
+        return self._latest_state.input_velocity.value/self.gear_ratio * 2*math.pi
+
+    def average_update_rate(self):
+        return self._request_period_seconds
 
     def set_requested_state(self, state: motor_pb2.ODriveAxis.State):
         self._send_can_command('set_requested_state', requested_state=state)
@@ -244,6 +266,7 @@ def main():
         for motor in motors:
             motor.clear_errors()
         for motor in motors:
+            # motor.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
             motor.set_requested_state(motor_pb2.ODriveAxis.STATE_CLOSED_LOOP_CONTROL)
 
     count = [0]
@@ -265,8 +288,8 @@ def main():
             )
         x += 1.0/command_rate_hz
 
-        right_motor.set_input_velocity(0)  # -math.sin(x/4)*1.5)
-        left_motor.set_input_velocity(0)  # math.sin(x/4)*1.5)
+        right_motor.set_input_velocity(0)
+        left_motor.set_input_velocity(0)
         count[0] += 1
 
     loop.add_reader(can_socket, lambda: can_socket.recv())

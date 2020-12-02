@@ -8,8 +8,8 @@ from farm_ng.core.blobstore import Blobstore
 from farm_ng.core.resource_pb2 import BUCKET_CONFIGURATIONS
 from farm_ng.perception.apriltag_pb2 import ApriltagConfig
 from farm_ng.perception.apriltag_pb2 import TagConfig
-from farm_ng.perception.tracking_camera_pb2 import CameraConfig
-from farm_ng.perception.tracking_camera_pb2 import CameraPipelineConfig
+from farm_ng.perception.camera_pipeline_pb2 import CameraConfig
+from farm_ng.perception.camera_pipeline_pb2 import CameraPipelineConfig
 from farm_ng.tractor.tractor_pb2 import TractorConfig
 
 
@@ -31,9 +31,9 @@ class TractorConfigManager:
     @staticmethod
     def default():
         config = TractorConfig()
-        config.wheel_baseline.value = _in2m(42.0)
-        config.wheel_radius.value = _in2m(17/2.0)
-        config.hub_motor_gear_ratio.value = 29.9
+        config.wheel_baseline.value = _in2m(48.0)
+        config.wheel_radius.value = 0.27574/2.0
+        config.hub_motor_gear_ratio.value = 29.909722222
         config.hub_motor_poll_pairs.value = 8
         config.topology = TractorConfig.Topology.TOPOLOGY_TWO_MOTOR_DIFF_DRIVE
         return config
