@@ -237,10 +237,10 @@ def main():
     loop = asyncio.get_event_loop()
 
     right_motor = HubMotor(
-        'right_motor',  20, can_socket,
+        'right_motor',  20, can_socket,  invert=True
     )
     right_motor_aft = HubMotor(
-        'right_motor_aft', 21, can_socket,
+        'right_motor_aft', 21, can_socket,  invert=True
     )
     left_motor = HubMotor(
         'left_motor', 10, can_socket,
@@ -266,9 +266,11 @@ def main():
         for motor in motors:
             motor.clear_errors()
         for motor in motors:
-            # motor.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
+            #motor.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
             motor.set_requested_state(motor_pb2.ODriveAxis.STATE_CLOSED_LOOP_CONTROL)
 
+    #left_motor_aft.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
+    #right_motor_aft.set_requested_state(motor_pb2.ODriveAxis.STATE_IDLE)
     count = [0]
 
     global x
